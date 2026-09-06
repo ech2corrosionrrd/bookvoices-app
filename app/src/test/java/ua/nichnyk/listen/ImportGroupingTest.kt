@@ -172,4 +172,47 @@ class ImportGroupingTest {
         assertEquals(null, a)
         assertEquals("Кобзар", t)
     }
+
+    /**
+     * Номер доріжки не автор.
+     *
+     * Той самий розбір «Автор - Назва» застосовується і до імені файла, коли в
+     * тегах автора немає. «01 - Розділ перший» — найпоширеніше іменування
+     * розділів аудіокниги — дає з нього автора «01», і це число перемагало
+     * справжнього автора з імені теки: тека «Леся Українка - Лісова пісня»
+     * давала книгу автора «01». Перевірено на пристрої перед виправленням.
+     *
+     * Відсіює це те саме правило, що відрізняє теку-диск від теки-книги.
+     */
+    @Test
+    fun trackNumberFromFileNameIsNotAnAuthor() {
+        val (fileAuthor, fileTitle) =
+            ua.nichnyk.listen.data.AudioImporter.Companion.parseFolderAuthorAndTitle("", "01 - Розділ перший")
+        assertEquals("01", fileAuthor)
+        assertEquals("Розділ перший", fileTitle)
+        assertTrue("голий номер доріжки має відсіюватися", isDiscFolder(fileAuthor!!))
+
+        // А ім'я теки тієї ж книги несе справжнього автора.
+        val (folderAuthor, folderTitle) =
+            ua.nichnyk.listen.data.AudioImporter.Companion.parseFolderAuthorAndTitle(
+                "Леся Українка - Лісова пісня",
+                null,
+            )
+        assertEquals("Леся Українка", folderAuthor)
+        assertEquals("Лісова пісня", folderTitle)
+        assertFalse(isDiscFolder(folderAuthor!!))
+    }
+
+    /**
+     * Двоцифрові номери відсіюються, а справжнє ім'я з цифрами — ні.
+     * Межа та сама, що в [isDiscFolder]: «1984» це назва, а не номер.
+     */
+    @Test
+    fun onlyBareTrackNumbersAreRejectedAsAuthor() {
+        assertTrue(isDiscFolder("01"))
+        assertTrue(isDiscFolder("7"))
+        assertTrue(isDiscFolder("12"))
+        assertFalse(isDiscFolder("1984"))
+        assertFalse(isDiscFolder("Джордж Орвелл"))
+    }
 }

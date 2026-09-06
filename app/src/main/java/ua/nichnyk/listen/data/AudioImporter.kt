@@ -50,6 +50,16 @@ data class ImportDraft(
     val coverFromAudio: String?,
     /** Окремий файл обкладинки в теці книги. */
     val coverImageUri: String?,
+    /**
+     * true — [author] прийшов із тегів файла; false — це здогадка з імені файла
+     * або «Невідомий автор».
+     *
+     * Розрізняти обов'язково: тег пише той, хто зібрав книгу, а ім'я файла
+     * майже завжди «01 - Розділ перший», і розбір «Автор - Назва» дає з нього
+     * автора «01». Без цієї ознаки таке число перемагало справжнього автора,
+     * розібраного з імені теки.
+     */
+    val authorFromTags: Boolean = false,
     /** Дерево SAF, з якого зібрано чернетку (лише імпорт/доливання папки). */
     val sourceTreeUri: String? = null,
     /** Тека цієї книги всередині [sourceTreeUri]; див. [BookEntity.sourceFolderDocId]. */
@@ -164,7 +174,12 @@ class AudioImporter(private val context: Context) {
                 val draft = toDraft(chapters, cover)
                 val (folderAuthor, folderTitle) = parseFolderAuthorAndTitle(key, rootName)
                 val resolvedTitle = folderTitle ?: draft.title
-                val resolvedAuthor = if ((draft.author == context.getString(R.string.unknown_author) || draft.author.isBlank()) && !folderAuthor.isNullOrBlank()) {
+                // Тег файла сильніший за ім'я теки, а здогадка з імені файла —
+                // слабша: назву ми й так завжди беремо з теки (resolvedTitle вище),
+                // і автор мусить іти за нею, інакше «Леся Українка - Лісова пісня»
+                // з розділами «01 - …» давала книгу автора «01».
+                val draftAuthorIsWeak = !draft.authorFromTags
+                val resolvedAuthor = if (draftAuthorIsWeak && !folderAuthor.isNullOrBlank()) {
                     folderAuthor
                 } else {
                     draft.author
@@ -436,11 +451,15 @@ class AudioImporter(private val context: Context) {
         val firstChapter = chapters.first()
         val defaultUnknown = context.getString(R.string.unknown_author)
         var author = chapters.mapNotNull { it.metaAuthor }.firstOrNull { it.isNotBlank() }
+        val fromTags = !author.isNullOrBlank()
         var title = firstChapter.metaTitle?.takeIf { !it.isNullOrBlank() }
 
         if (author.isNullOrBlank()) {
             val (fileAuthor, fileTitle) = parseFolderAuthorAndTitle("", firstChapter.title)
-            if (!fileAuthor.isNullOrBlank()) {
+            // «01 - Розділ перший» — це номер доріжки, а не автор. Те саме
+            // правило, що відрізняє теку-диск від теки-книги: голе число до
+            // двох цифр іменем бути не може.
+            if (!fileAuthor.isNullOrBlank() && !isDiscFolder(fileAuthor)) {
                 author = fileAuthor
                 if (title.isNullOrBlank() && !fileTitle.isNullOrBlank()) {
                     title = fileTitle
@@ -456,6 +475,7 @@ class AudioImporter(private val context: Context) {
         return ImportDraft(
             title = safeTitle,
             author = safeAuthor,
+            authorFromTags = fromTags,
             chapters = chapters,
             coverFromAudio = firstChapter.uri,
             coverImageUri = folderImageUri,
