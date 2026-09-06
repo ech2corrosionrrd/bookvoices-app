@@ -13,6 +13,26 @@ env:
   JAVA_VERSION: '17'
 
 jobs:
+  changes:
+    runs-on: ubuntu-24.04
+    outputs:
+      android: ${{ steps.filter.outputs.android }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            android:
+              - 'app/**'
+              - 'baselineprofile/**'
+              - 'gradle/**'
+              - '**.gradle.kts'
+              - 'gradle.properties'
+              - 'gradlew'
+              - 'gradlew.bat'
+              - '.github/workflows/**'
+
   build:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -75,6 +95,7 @@ jobs:
             app/build/reports/
             app/build/test-results/
           retention-days: 7
+          if-no-files-found: ignore
 
       - name: mapping.txt
         if: always()
@@ -83,9 +104,11 @@ jobs:
           name: r8-mapping
           path: app/build/outputs/mapping/release/mapping.txt
           retention-days: 30
-          if-no-files-found: warn
+          if-no-files-found: ignore
 
   instrumented:
+    needs: changes
+    if: github.event_name == 'pull_request' || needs.changes.outputs.android == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
