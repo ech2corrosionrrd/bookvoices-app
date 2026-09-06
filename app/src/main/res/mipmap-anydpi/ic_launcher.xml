@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    tools:ignore="MonochromeLauncherIcon">
+    <background android:drawable="@color/ic_launcher_background" />
+    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+    <!--
+        <monochrome> тут навмисно немає. Цей шар система фарбує одним кольором і
+        бере з нього лише альфу, тож він має бути силуетом. Малюнок іконки —
+        непрозорий від краю до краю, з власним градієнтом: як монохром він давав
+        не значок, а суцільну пляму. Без цього шару темовані іконки Android 13+
+        показують звичайну іконку — стандартна поведінка, і виглядає вона краще.
+    -->
+</adaptive-icon>

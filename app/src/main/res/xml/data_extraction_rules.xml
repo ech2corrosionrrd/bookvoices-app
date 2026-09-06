@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+. Те саме, що в backup_rules.xml: секрети не потрапляють ні в
+     хмарний бекап, ні в перенесення на новий пристрій, а скопійоване аудіо не
+     переповнює квоту бекапу. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="bookvoices_secrets_v2.xml" />
+        <exclude domain="file" path="imports/" />
+        <exclude domain="file" path="demo/" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="bookvoices_secrets_v2.xml" />
+        <exclude domain="file" path="imports/" />
+        <exclude domain="file" path="demo/" />
+    </device-transfer>
+</data-extraction-rules>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Пароль WebDAV передається у заголовку Basic auth, тому HTTP без TLS заборонений:
+  інакше логін і пароль летіли б мережею відкритим текстом.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

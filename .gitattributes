@@ -1,0 +1,12 @@
+# Нормалізація кінців рядків. Без цього core.autocrlf на Windows може записати
+# gradlew із CRLF, і Linux-CI падає з «bad interpreter: /bin/sh^M».
+* text=auto eol=lf
+
+gradlew        text eol=lf
+gradlew.bat    text eol=crlf
+
+*.jar          binary
+*.png          binary
+*.ttf          binary
+*.p12          binary
+*.apk          binary

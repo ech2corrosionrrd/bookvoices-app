@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="night_bg">#0A1018</color>
+    <color name="oled_bg">#000000</color>
+    <color name="paper_bg">#F4EBD8</color>
+    <color name="filament">#F4B942</color>
+</resources>
