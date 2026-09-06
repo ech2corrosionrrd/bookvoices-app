@@ -21,6 +21,10 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Mirror may be synced from Windows; ensure gradlew is executable on the runner.
+      - name: chmod gradlew
+        run: chmod +x gradlew
+
       - name: devVersion випереджає останній тег
         run: |
           dev=$(grep -o 'val devVersion = "[0-9.]*' build.gradle.kts | grep -o '[0-9][0-9.]*')
@@ -91,6 +95,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: chmod gradlew
+        run: chmod +x gradlew
+
       - name: JDK ${{ env.JAVA_VERSION }}
         uses: actions/setup-java@v6
         with:
@@ -132,3 +139,4 @@ jobs:
           name: reports-instrumented-api${{ matrix.api-level }}
           path: app/build/reports/androidTests/
           retention-days: 7
+          if-no-files-found: ignore
