@@ -1,6 +1,7 @@
 # Документація BookVoices
 
 Публічне дзеркало локального `:app`. Останній зріз релізу — **v1.12.0**.
+Розробка ведеться в приватному репозиторії; сюди потрапляють відкриті зрізи.
 
 | Документ | Для кого |
 |---|---|
@@ -13,7 +14,9 @@
 
 ## Швидкі посилання
 
-- **APK:** [Releases](../../releases) → `bookvoices-*.apk`
+- **APK:** [Releases](../../releases) → `bookvoices-*.apk` (або з приватного
+  [bookvoices Releases](https://github.com/ech2corrosionrrd/bookvoices/releases),
+  якщо тут ще немає артефактів)
 - **AAB:** `gradlew.bat :app:bundleRelease '-PreleaseTag=v1.12.0'`
-- **Privacy (EN):** [`play-store/privacy-policy-en.md`](play-store/privacy-policy-en.md)
-- **Issues:** [GitHub Issues](../../issues)
+- **Privacy (EN, для Play Console):** [privacy-policy-en.md](https://github.com/ech2corrosionrrd/bookvoices-app/blob/main/docs/play-store/privacy-policy-en.md)
+- **Issues:** [GitHub Issues](https://github.com/ech2corrosionrrd/bookvoices-app/issues)

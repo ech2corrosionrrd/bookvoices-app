@@ -499,3 +499,10 @@ media3 й реалізація компаньйона. **Перевіряти т
 в парі з кодом на гілці; у релізних нотатках тега — лише те, що ввійшло в APK.
 План монетизації (окремо від фіч) —
 [`docs/MONETIZATION.md`](docs/MONETIZATION.md).
+
+**Публічне дзеркало** локального `:app` —
+[bookvoices-app](https://github.com/ech2corrosionrrd/bookvoices-app). Після
+релізу (або коли змінюється те, що має бути відкритим) синхронізувати скриптом
+[`scripts/prepare-public-mirror.ps1`](scripts/prepare-public-mirror.ps1); інструкція —
+[`scripts/public-mirror/HOWTO.md`](scripts/public-mirror/HOWTO.md). Не робити
+`git push --mirror` з цього репо.

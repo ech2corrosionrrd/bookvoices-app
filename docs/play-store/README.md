@@ -1,6 +1,7 @@
 # РџСѓР±Р»С–РєР°С†С–СЏ BookVoices Сѓ Google Play
 
 Р›РёС€Рµ Р»РѕРєР°Р»СЊРЅРёР№ РјРѕРґСѓР»СЊ `:app` (`app.bookvoices`). РҐРјР°СЂРЅРёР№ РєР»С–С”РЅС‚ РЅРµ РїСѓР±Р»С–РєСѓС”С‚СЊСЃСЏ.
+Р’С–РґРєСЂРёС‚РёР№ РєРѕРґ Р»РѕРєР°Р»СЊРЅРѕРіРѕ вЂ” [bookvoices-app](https://github.com/ech2corrosionrrd/bookvoices-app).
 
 **РћСЃС‚Р°РЅРЅС–Р№ GitHub-СЂРµР»С–Р·:** С‚РµРі `v1.12.0`
 ([Releases](https://github.com/ech2corrosionrrd/bookvoices/releases/tag/v1.12.0)).
@@ -57,7 +58,8 @@ Billing Сѓ РєРѕРґС– вЂ” **8.0.0** (РІРёРјРѕРіР° Play 
       `SKU_PRO_LIFETIME` Сѓ `ProEntitlementManager`
 - [ ] **Setup в†’ License testing**: РґРѕРґР°С‚Рё СЃРІРѕСЋ РїРѕС€С‚Сѓ, С‰РѕР± РїРѕРєСѓРїРєР° РїСЂРѕС…РѕРґРёР»Р°
       Р±РµР· СЃРїРёСЃР°РЅРЅСЏ РєРѕС€С‚С–РІ
-- [ ] Privacy policy URL в†’ https://github.com/ech2corrosionrrd/bookvoices/blob/master/docs/play-store/privacy-policy-en.md
+- [ ] Privacy policy URL в†’ https://github.com/ech2corrosionrrd/bookvoices-app/blob/main/docs/play-store/privacy-policy-en.md
+      (РїСѓР±Р»С–С‡РЅРµ РґР·РµСЂРєР°Р»Рѕ; URL Р· РїСЂРёРІР°С‚РЅРѕРіРѕ `bookvoices` РґР»СЏ Console РЅРµРґРѕСЃС‚СѓРїРЅРёР№)
 - [ ] Store listing: `listing.md` (UK + EN РјС–РЅС–РјСѓРј)
 - [ ] Data safety: В«No data collectedВ»; IAP: РѕРїС†С–Р№РЅС– РїРѕРєСѓРїРєРё С‡РµСЂРµР· Google Play Billing
 - [ ] Content rating (IARC questionnaire)
