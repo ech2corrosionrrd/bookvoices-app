@@ -345,6 +345,18 @@ fun Long.hoursMinutesSeconds(): Triple<Long, Long, Long> {
 
 enum class LibraryFilter { All, Listening, Finished, Unavailable }
 
+/**
+ * Скільки файлів книги не відкривається — і скільки їх усього.
+ *
+ * Рахуємо за унікальними URI, а не за розділами: один файл, розбитий на розділи
+ * мітками глав, зник би один раз, а полиця показала б стільки втрат, скільки в
+ * ньому розділів.
+ */
+data class MissingFiles(val missing: Int, val total: Int) {
+    /** Не лишилося жодного доступного файла — книгу лікує лише перепривʼязка теки. */
+    val isWhole: Boolean get() = missing >= total
+}
+
 /** Період для графіка активності на екрані історії. */
 enum class StatsPeriod { Week, Month, Year }
 
@@ -352,6 +364,7 @@ enum class BookSortOrder(val titleRes: Int) {
     LastPlayed(ua.nichnyk.listen.R.string.sort_last_played),
     Title(ua.nichnyk.listen.R.string.sort_title),
     Author(ua.nichnyk.listen.R.string.sort_author),
+    Series(ua.nichnyk.listen.R.string.sort_series),
     Progress(ua.nichnyk.listen.R.string.sort_progress),
     AddedAt(ua.nichnyk.listen.R.string.sort_added_at),
 }

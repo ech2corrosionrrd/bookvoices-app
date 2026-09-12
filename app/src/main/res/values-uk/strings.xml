@@ -17,6 +17,11 @@
     <string name="sort_last_played">Останні</string>
     <string name="sort_title">Назва</string>
     <string name="sort_author">Автор</string>
+    <string name="sort_series">Цикл</string>
+    <string name="sort_menu_title">Сортувати за</string>
+    <string name="sort_with_headers">з групами</string>
+    <string name="shelf_series_and_tags">Цикли й мітки</string>
+    <string name="tags_title">Мітки</string>
     <string name="sort_progress">Прогрес</string>
     <string name="sort_added_at">Нові</string>
     <string name="resume_section">Недочитане</string>
@@ -62,7 +67,6 @@
     <string name="quick_presets">Швидкі пресети</string>
     <string name="skip_silence">Пропуск тиші</string>
     <string name="skip_silence_desc">Скорочувати паузи між словами</string>
-    <string name="speech_clarity">Чіткість голосу</string>
     <string name="speech_clarity_desc">Підсилювати частоти мовлення для кращої розбірливості</string>
 
     <string name="bookmarks_title">Закладки</string>
@@ -221,7 +225,16 @@
     <string name="relink_failed">У цій теці не знайдено файлів цієї книги</string>
 
     <!-- Хвиля A (A1-A6) -->
-    <string name="book_files_missing_badge">Файли книги недоступні</string>
+    <plurals name="book_files_missing_count">
+        <item quantity="one">Немає %1$d з %2$d файла</item>
+        <item quantity="few">Немає %1$d з %2$d файлів</item>
+        <item quantity="many">Немає %1$d з %2$d файлів</item>
+        <item quantity="other">Немає %1$d з %2$d файлів</item>
+    </plurals>
+    <string name="shelf_books_of_total">%1$d з %2$d</string>
+    <string name="shelf_section_pinned">Закріплені</string>
+    <string name="shelf_section_no_series">Поза циклами</string>
+    <string name="shelf_scroll_to_top">Вгору</string>
     <string name="author_stats_books">Книг</string>
     <string name="author_stats_duration">Тривалість</string>
     <string name="author_stats_listened">Прослухано</string>
@@ -355,14 +368,10 @@
     <string name="export_bookmarks_title">Мої закладки BookVoices</string>
     <string name="export_bookmarks_total">Усього закладок: %d</string>
     <string name="export_catalog">Експортувати список книг</string>
-    <string name="export_catalog_desc">Зберегти або поділитися читацьким списком у форматі Markdown</string>
     <string name="export_catalog_title">Моя аудіобібліотека BookVoices</string>
     <string name="export_catalog_exported_at">Експортовано: %s</string>
     <string name="export_catalog_total_books">Всього книг: %d</string>
     <string name="export_catalog_total_duration">Загальна тривалість: %s</string>
-    <string name="language_select_title">Мова інтерфейсу</string>
-    <string name="system_default_lang">Системна за замовчуванням</string>
-    <string name="change_language">Змінити</string>
     <string name="auto_bookmark_bluetooth">Автозакладка при розриві Bluetooth</string>
     <string name="auto_bookmark_bluetooth_desc">Автоматично зберігати мітку при вимкненні авто або навушників</string>
     <string name="bookmark_bluetooth_disconnected">Розрив Bluetooth о %s</string>
@@ -370,7 +379,6 @@
     <string name="jump_back_to">Повернутися на %s</string>
     <string name="jump_back_dismiss">Сховати</string>
     <string name="pro_title">BookVoices Pro</string>
-    <string name="pro_badge">💎 Pro</string>
     <string name="pro_tagline">Один раз і назавжди. Без підписок і без реклами</string>
     <string name="pro_lifetime_desc">Довічна преміум-ліцензія без щомісячних платежів</string>
     <string name="pro_benefit_skip_silence">Пропуск пауз та тиші між реченнями</string>
@@ -391,7 +399,6 @@
     <string name="characters_title">Персонажі</string>
     <string name="characters_empty">Немає збережених персонажів</string>
     <string name="add_character">Додати персонажа</string>
-    <string name="edit_character">Редагувати персонажа</string>
     <string name="delete_character">Видалити персонажа</string>
     <string name="character_name">Ім\'я персонажа</string>
     <string name="character_role">Роль (наприклад: Головний герой, Детектив)</string>

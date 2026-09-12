@@ -55,7 +55,7 @@ fun SeriesScreen(
     val seriesBooks = remember(allBooks, seriesName) {
         ShelfQuery.booksInSeries(allBooks, seriesName)
     }
-    val missingFilesBooks by libraryVm.missingFilesBooks.collectAsStateWithLifecycle()
+    val missingFileCounts by libraryVm.missingFileCounts.collectAsStateWithLifecycle()
     val totalDurationMs = seriesBooks.sumOf { it.book.durationMs }
     val totalListenedMs = seriesBooks.sumOf { it.absolutePosition() }
     val completedCount = seriesBooks.count { it.book.completed }
@@ -169,7 +169,7 @@ fun SeriesScreen(
                     BookCard(
                         item = item,
                         onClick = { onOpenBook(item.book.id) },
-                        hasMissingFiles = missingFilesBooks.contains(item.book.id),
+                        missingFiles = missingFileCounts[item.book.id],
                     )
                 }
             }

@@ -1,23 +1,35 @@
 [versions]
-# Тулчейн лишається на AGP 8.x / Kotlin 2.0.x свідомо: перехід на AGP 9 —
-# окрема міграція (Gradle 9, зміни DSL), а не частина оновлення бібліотек.
-agp = "8.13.2"
-kotlin = "2.0.21"
-ksp = "2.0.21-1.0.28"
+# Тулчейн на AGP 9 / Kotlin 2.4 / Gradle 9 — міграція, яку до 12 вересня 2026
+# відкладали. Вона знімає стелю бібліотек: core-ktx 1.19, lifecycle 2.11,
+# navigation 2.10, compose-bom 2026.09 і media3 1.11 вимагали саме її.
+#
+# Що змінилося в самих файлах збірки: плагін `org.jetbrains.kotlin.android`
+# більше не потрібен (AGP 9 має вбудований Kotlin), `kotlinOptions` замінено на
+# `kotlin { compilerOptions { … } }`, compileSdk піднято до 37. KSP відтепер має
+# власну нумерацію, не привʼязану до версії Kotlin.
+#
+# Room свідомо лишається на 2.7.1: у 2.8 `room-testing` читає схеми через
+# kotlinx-serialization новішої версії, ніж та, яку жорстко закріплює
+# compose-bom (1.7.3), і всі одинадцять тестів міграцій падають з
+# AbstractMethodError. Користі від 2.8 тут немає, а тести міграцій — найцінніший
+# запобіжник у проєкті.
+agp = "9.4.0"
+kotlin = "2.4.20"
+ksp = "2.3.12"
 
-composeBom = "2025.06.01"
-coreKtx = "1.16.0"
-appcompat = "1.7.1"
-activityCompose = "1.10.1"
-navigationCompose = "2.9.0"
-lifecycle = "2.9.1"
-media3 = "1.7.1"
+composeBom = "2026.09.00"
+coreKtx = "1.19.0"
+appcompat = "1.8.0"
+activityCompose = "1.13.0"
+navigationCompose = "2.10.1"
+lifecycle = "2.11.0"
+media3 = "1.11.1"
 room = "2.7.1"
-datastore = "1.1.7"
-concurrentFutures = "1.2.0"
+datastore = "1.2.1"
+concurrentFutures = "1.3.0"
 documentfile = "1.1.0"
-work = "2.10.1"
-benchmark = "1.3.4"
+work = "2.11.2"
+benchmark = "1.5.0"
 # Play з 31.08.2026 відхиляє оновлення на Billing < 8 (extension до 01.11.2026).
 billing = "8.0.0"
 
@@ -31,16 +43,16 @@ ktor = "2.3.12"
 kotlinxDatetime = "0.6.0"
 coil = "2.7.0"
 profileinstaller = "1.4.1"
-uiautomator = "2.3.0"
+uiautomator = "2.4.0"
 
 junit = "4.13.2"
-json = "20240303"
-coroutinesTest = "1.8.1"
-robolectric = "4.13"
+json = "20260814"
+coroutinesTest = "1.11.0"
+robolectric = "4.17"
 archCoreTesting = "2.2.0"
-androidxTestJunit = "1.2.1"
-androidxTestCore = "1.6.1"
-androidxTestRunner = "1.6.2"
+androidxTestJunit = "1.3.0"
+androidxTestCore = "1.7.0"
+androidxTestRunner = "1.7.0"
 
 [libraries]
 compose-bom = { module = "androidx.compose:compose-bom", version.ref = "composeBom" }
@@ -49,6 +61,8 @@ compose-ui-tooling = { module = "androidx.compose.ui:ui-tooling" }
 compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
 compose-material3 = { module = "androidx.compose.material3:material3" }
 compose-material-icons-extended = { module = "androidx.compose.material:material-icons-extended" }
+compose-ui-test-junit4 = { module = "androidx.compose.ui:ui-test-junit4" }
+compose-ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }
 
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
 androidx-appcompat = { module = "androidx.appcompat:appcompat", version.ref = "appcompat" }

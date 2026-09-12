@@ -129,8 +129,17 @@ class UserPrefs(context: Context, private val secrets: SecretStore) {
     /**
      * Дзеркало теми у звичайних SharedPreferences: DataStore читається асинхронно,
      * а windowBackground треба обрати синхронно в Activity.onCreate до першого кадру.
+     *
+     * `by lazy`, а не одразу: створювався він у конструкторі, тобто в
+     * `AppContainer` на головному потоці при кожному піднятті процесу — зокрема
+     * коли процес піднімає Android Auto чи шторка й жодного вікна не буде взагалі.
+     * StrictMode показував це як дисковий доступ на головному потоці в
+     * `ListenApp.onCreate`. Тепер файл читається лише там, де тему справді
+     * питають, — тобто в [themeModeBlocking] і при її записі.
      */
-    private val mirror = appContext.getSharedPreferences(MIRROR_FILE, Context.MODE_PRIVATE)
+    private val mirror: android.content.SharedPreferences by lazy {
+        appContext.getSharedPreferences(MIRROR_FILE, Context.MODE_PRIVATE)
+    }
 
     private val secretsEncrypted = MutableStateFlow(true)
 

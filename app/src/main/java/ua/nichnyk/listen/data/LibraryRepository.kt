@@ -10,6 +10,10 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import ua.nichnyk.listen.AppLog
 import ua.nichnyk.listen.R
@@ -646,16 +650,57 @@ class LibraryRepository(
     }
 
     /** Перевірка доступності файлу робить IO, тому виконується поза головним потоком. */
-    suspend fun isAudioAccessible(uriStr: String): Boolean = withContext(Dispatchers.IO) {
-        runCatching {
-            val uri = uriStr.toUri()
-            if (uri.scheme == "file") {
-                java.io.File(uri.path ?: return@runCatching false).exists()
-            } else {
-                context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { true } ?: false
+    suspend fun isAudioAccessible(uriStr: String): Boolean =
+        withContext(Dispatchers.IO) { isAccessibleBlocking(uriStr) }
+
+    /**
+     * Ті з [uris], що зараз не відкриваються.
+     *
+     * Перевірки йдуть паралельно, бо кожна — не обчислення, а очікування: для
+     * `content://` це Binder-виклик до DocumentsProvider, і потік стоїть у ньому
+     * без діла. Послідовний обхід полиці зі 100 книг (1398 файлів) займав на
+     * емуляторі API 30 близько 1,9 с, і весь цей час полиця стояла без жодної
+     * позначки — результат віддається одним махом у кінці.
+     *
+     * Стеля потоків, а не «усі одразу»: пул Binder-потоків на клієнті скінченний,
+     * і тисяча одночасних викликів упреться в нього, а не прискорить справу.
+     *
+     * Набір, а не список: URI, спільний для кількох книг (один файл, побитий на
+     * глави мітками), перевіряється один раз.
+     */
+    suspend fun inaccessibleUris(uris: Collection<String>): Set<String> {
+        val distinct = uris.toSet()
+        if (distinct.isEmpty()) return emptySet()
+        return withContext(Dispatchers.IO) {
+            val gate = Semaphore(ACCESS_CHECK_PARALLELISM)
+            val checks = distinct.map { uri ->
+                async { uri.takeIf { !gate.withPermit { isAccessibleBlocking(it) } } }
             }
-        }.onFailure { AppLog.w("isAudioAccessible: файл недоступний", it) }.getOrDefault(false)
+            checks.awaitAll().filterNotNullTo(mutableSetOf())
+        }
     }
+
+    /**
+     * Сама перевірка, без перемикання диспетчера: викликається вже з IO.
+     *
+     * Помилку тут не логуємо кожну окремо. Зниклий файл — очікуваний випадок цієї
+     * функції, а не аномалія: коли зникає тека, у logcat летіла тисяча стектрейсів
+     * (на вимірі вище — 463 за один скан), і вони гнали з журналу те, заради чого
+     * журнал і заведено.
+     */
+    private fun isAccessibleBlocking(uriStr: String): Boolean = runCatching {
+        val uri = uriStr.toUri()
+        if (uri.scheme == "file") {
+            java.io.File(uri.path ?: return@runCatching false).exists()
+        } else {
+            // openAssetFileDescriptor, а не query: спокусливо здається, що запит
+            // дешевший — адже дескриптор справді відкриває файл. Виміряно на
+            // 1398 файлах: запит із проєкцією `null` дав 3237 мс проти 1104 мс.
+            // Провайдер на запит збирає всі колонки, а на відкриття зниклого
+            // файла відмовляє одразу.
+            context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { true } ?: false
+        }
+    }.getOrDefault(false)
 
     suspend fun deleteBook(id: String) {
         withContext(Dispatchers.Main) { onBookDeleted(id) }
@@ -1190,6 +1235,17 @@ class LibraryRepository(
         }
         sb.toString()
     }
+    private companion object {
+        /**
+         * Скільки перевірок доступності тримати в польоті одночасно.
+         *
+         * Вісім, а не «скільки є»: типовий пул Binder-потоків — 16 на процес, і
+         * ділити його наполовину з рештою застосунку вистачає, щоб сховати
+         * затримку IPC, але не вистачає, щоб його вичерпати.
+         */
+        private const val ACCESS_CHECK_PARALLELISM = 8
+    }
+
 }
 
 

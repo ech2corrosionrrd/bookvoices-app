@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
     <string name="app_name">BookVoices</string>
     <string name="tab_shelf">Shelf</string>
     <string name="tab_bookmarks">Bookmarks</string>
@@ -17,6 +17,11 @@
     <string name="sort_last_played">Recent</string>
     <string name="sort_title">Title</string>
     <string name="sort_author">Author</string>
+    <string name="sort_series">Series</string>
+    <string name="sort_menu_title">Sort by</string>
+    <string name="sort_with_headers">with headers</string>
+    <string name="shelf_series_and_tags">Series &amp; tags</string>
+    <string name="tags_title">Tags</string>
     <string name="sort_progress">Progress</string>
     <string name="sort_added_at">Newest</string>
     <string name="resume_section">Continue listening</string>
@@ -62,7 +67,6 @@
     <string name="quick_presets">Quick presets</string>
     <string name="skip_silence">Skip silence</string>
     <string name="skip_silence_desc">Shorten silent pauses between words</string>
-    <string name="speech_clarity">Speech Clarity</string>
     <string name="speech_clarity_desc">Boost voice frequencies for better speech intelligibility</string>
 
     <string name="bookmarks_title">Bookmarks</string>
@@ -203,7 +207,10 @@
         <item quantity="one">Added %d book</item>
         <item quantity="other">Added %d books</item>
     </plurals>
-    <string name="import_added_with_skipped">%1$s, skipped %2$d already on the shelf</string>
+    <!-- PluralsCandidate: після числа тут немає іменника, який відмінюється —
+         ні в типовій локалі, ні в uk/pl. Набір множини дав би чотири однакові
+         варіанти. -->
+    <string name="import_added_with_skipped" tools:ignore="PluralsCandidate">%1$s, skipped %2$d already on the shelf</string>
     <string name="unit_seconds_short">s</string>
 
     <!-- Перепривʼязка файлів книги -->
@@ -211,11 +218,21 @@
     <string name="relink_banner_body">The folder was moved, renamed or unmounted. Progress and bookmarks are safe — just point to where the files live now.</string>
     <string name="relink_action">Choose folder</string>
     <string name="relink_done">Book relinked</string>
-    <string name="relink_partial">Relinked %1$d of %2$d files</string>
+    <!-- PluralsCandidate: рядок показують лише при 0 < matched < total (див.
+         RelinkResult), тобто total завжди >= 2 — форма для одного файла
+         недосяжна. -->
+    <string name="relink_partial" tools:ignore="PluralsCandidate">Relinked %1$d of %2$d files</string>
     <string name="relink_failed">No files from this book were found in that folder</string>
 
     <!-- Wave A (A1-A6) -->
-    <string name="book_files_missing_badge">Book files unavailable</string>
+    <plurals name="book_files_missing_count">
+        <item quantity="one">%1$d of %2$d file missing</item>
+        <item quantity="other">%1$d of %2$d files missing</item>
+    </plurals>
+    <string name="shelf_books_of_total">%1$d of %2$d</string>
+    <string name="shelf_section_pinned">Pinned</string>
+    <string name="shelf_section_no_series">Not in a series</string>
+    <string name="shelf_scroll_to_top">Back to top</string>
     <string name="author_stats_books">Books</string>
     <string name="author_stats_duration">Duration</string>
     <string name="author_stats_listened">Listened</string>
@@ -241,7 +258,9 @@
     <string name="library_roots_empty_hint">Add a library folder in Settings to find new books</string>
     <string name="library_roots_added">Library folder added</string>
     <string name="library_roots_duplicate">This folder is already in the list</string>
-    <string name="library_roots_limit">You can add up to %d library folders</string>
+    <!-- PluralsCandidate: %d — це константа MAX_LIBRARY_ROOTS (10), а не
+         лічильник. Решта форм ніколи не знадобиться. -->
+    <string name="library_roots_limit" tools:ignore="PluralsCandidate">You can add up to %d library folders</string>
     <string name="library_roots_permission_failed">Could not keep access to this folder</string>
     <string name="library_roots_access_lost">Library folder access was revoked. Add the folders again in Settings.</string>
     <string name="scan_new_books_title">New books found</string>
@@ -339,14 +358,10 @@
     <string name="export_bookmarks_title">My BookVoices bookmarks</string>
     <string name="export_bookmarks_total">Total bookmarks: %d</string>
     <string name="export_catalog">Export book catalog</string>
-    <string name="export_catalog_desc">Save or share your reading list in Markdown format</string>
     <string name="export_catalog_title">My BookVoices Audiobook Library</string>
     <string name="export_catalog_exported_at">Exported: %s</string>
     <string name="export_catalog_total_books">Total books: %d</string>
     <string name="export_catalog_total_duration">Total duration: %s</string>
-    <string name="language_select_title">Interface Language</string>
-    <string name="system_default_lang">System Default</string>
-    <string name="change_language">Change</string>
     <string name="auto_bookmark_bluetooth">Auto-bookmark on Bluetooth disconnect</string>
     <string name="auto_bookmark_bluetooth_desc">Automatically save a bookmark when car or headphones disconnect</string>
     <string name="bookmark_bluetooth_disconnected">Bluetooth disconnected at %s</string>
@@ -354,7 +369,6 @@
     <string name="jump_back_to">Jump back to %s</string>
     <string name="jump_back_dismiss">Dismiss</string>
     <string name="pro_title">BookVoices Pro</string>
-    <string name="pro_badge">💎 Pro</string>
     <string name="pro_tagline">One-time purchase forever. No subscriptions, no ads</string>
     <string name="pro_lifetime_desc">Lifetime premium license with no recurring fees</string>
     <string name="pro_benefit_skip_silence">Dynamic silence &amp; pause skipping</string>
@@ -375,7 +389,6 @@
     <string name="characters_title">Characters</string>
     <string name="characters_empty">No characters added yet</string>
     <string name="add_character">Add character</string>
-    <string name="edit_character">Edit character</string>
     <string name="delete_character">Delete character</string>
     <string name="character_name">Character name</string>
     <string name="character_role">Role (e.g. Protagonist, Detective)</string>

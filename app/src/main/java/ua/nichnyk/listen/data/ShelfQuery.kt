@@ -68,6 +68,29 @@ object ShelfQuery {
                 val cmp = AudioImporter.naturalCompare(a.book.author, b.book.author)
                 if (cmp != 0) cmp else AudioImporter.naturalCompare(a.book.title, b.book.title)
             }
+            // Цикл, далі номер у циклі, далі назва. Книги поза циклами йдуть у
+            // кінець одним блоком: інакше вони розсипалися б поміж циклами, і
+            // заголовки на полиці чергувалися б із «поза циклами» без потреби.
+            BookSortOrder.Series -> books.sortedWith { a, b ->
+                val sa = a.book.series?.takeIf { it.isNotBlank() }
+                val sb = b.book.series?.takeIf { it.isNotBlank() }
+                when {
+                    sa == null && sb == null -> AudioImporter.naturalCompare(a.book.title, b.book.title)
+                    sa == null -> 1
+                    sb == null -> -1
+                    else -> {
+                        val cmp = AudioImporter.naturalCompare(sa, sb)
+                        if (cmp != 0) {
+                            cmp
+                        } else {
+                            val orderCmp = (a.book.seriesOrder ?: Float.MAX_VALUE)
+                                .compareTo(b.book.seriesOrder ?: Float.MAX_VALUE)
+                            if (orderCmp != 0) orderCmp
+                            else AudioImporter.naturalCompare(a.book.title, b.book.title)
+                        }
+                    }
+                }
+            }
             BookSortOrder.Progress -> books.sortedByDescending { it.progress() }
             BookSortOrder.AddedAt -> books.sortedByDescending { it.book.addedAt }
         }

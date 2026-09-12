@@ -340,6 +340,7 @@ fun PlayerScreen(
                         tick = tick,
                         onSeek = vm::seek,
                         timeStyle = metrics.timeStyle,
+                        modifier = Modifier.fillMaxWidth(),
                     )
 
                     transport()
@@ -401,6 +402,7 @@ fun PlayerScreen(
                     tick = tick,
                     onSeek = vm::seek,
                     timeStyle = metrics.timeStyle,
+                    modifier = Modifier.fillMaxWidth(),
                 )
 
                 Spacer(Modifier.height(Spacing.s))
@@ -1165,10 +1167,12 @@ private fun ChapterProgress(
     tick: State<PlaybackTick>,
     onSeek: (Long) -> Unit,
     timeStyle: TextStyle,
-    // Явний fillMaxWidth: доти обидві копії були голим `Column {}` і тримали
-    // повну ширину лише тому, що так їх міряв батько. Виносити блок у функцію
-    // з такою неявною домовленістю означало б чекати, поки вона колись зламається.
-    modifier: Modifier = Modifier.fillMaxWidth(),
+    // Ширину задає той, хто викликає, і задає явно: доти обидві копії були голим
+    // `Column {}` і тримали повну ширину лише тому, що так їх міряв батько.
+    // Типовим значенням тут якийсь час стояв `Modifier.fillMaxWidth()` — це
+    // ховало ту саму неявність усередині функції, а Compose очікує, що типовий
+    // модифікатор порожній і нічого не нав'язує.
+    modifier: Modifier = Modifier,
 ) {
     var dragging by remember { mutableStateOf(false) }
     var dragValue by remember { mutableFloatStateOf(0f) }

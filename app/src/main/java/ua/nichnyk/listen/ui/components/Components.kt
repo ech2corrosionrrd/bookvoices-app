@@ -63,7 +63,10 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -74,6 +77,7 @@ import ua.nichnyk.listen.ui.theme.Spacing
 import ua.nichnyk.listen.R
 import ua.nichnyk.listen.data.BookWithChapters
 import ua.nichnyk.listen.data.LibraryFilter
+import ua.nichnyk.listen.data.MissingFiles
 import ua.nichnyk.listen.data.formatClock
 import ua.nichnyk.listen.data.greetingRes
 import ua.nichnyk.listen.data.hoursMinutesSeconds
@@ -281,13 +285,65 @@ fun MiniPlayerBar(
 }
 
 @OptIn(ExperimentalFoundationApi::class)
+/**
+ * «Немає N з M файлів» на обкладинці.
+ *
+ * Раніше тут стояв самий трикутник, і книга, де зник один файл із сорока,
+ * виглядала так само, як книга, від якої не лишилося нічого. Випадки різні:
+ * перший лікується долиттям файлів, другий — перепривʼязкою теки.
+ *
+ * Число показуємо завжди, зокрема «20/20»: одне правило читається легше, ніж
+ * трикутник, який іноді з числом, а іноді без.
+ */
+@Composable
+fun MissingFilesBadge(
+    missing: MissingFiles,
+    compact: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    // Читачам екрана — ціле речення, а не «3 навскіс 20».
+    // Форму диктує загальна кількість файлів — саме її іменник і стоїть у фразі.
+    val spoken = pluralStringResource(
+        R.plurals.book_files_missing_count,
+        missing.total,
+        missing.missing,
+        missing.total,
+    )
+    Surface(
+        shape = RoundedCornerShape(if (compact) 6.dp else 8.dp),
+        color = MaterialTheme.colorScheme.errorContainer,
+        modifier = modifier.semantics { contentDescription = spoken },
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(if (compact) 1.dp else 2.dp),
+            modifier = Modifier.padding(
+                horizontal = if (compact) 3.dp else 5.dp,
+                vertical = if (compact) 1.dp else 2.dp,
+            ),
+        ) {
+            Icon(
+                Icons.Filled.Warning,
+                contentDescription = null,
+                modifier = Modifier.size(if (compact) 10.dp else 13.dp),
+                tint = MaterialTheme.colorScheme.onErrorContainer,
+            )
+            Text(
+                "${missing.missing}/${missing.total}",
+                style = if (compact) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+            )
+        }
+    }
+}
+
 @Composable
 fun BookCard(
     item: BookWithChapters,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     onLongClick: () -> Unit = {},
-    hasMissingFiles: Boolean = false,
+    missingFiles: MissingFiles? = null,
     isMultiSelect: Boolean = false,
     isSelected: Boolean = false,
 ) {
@@ -315,7 +371,15 @@ fun BookCard(
                         .fillMaxWidth()
                         .height(4.dp)
                         .clip(RoundedCornerShape(bottomStart = 12.dp, bottomEnd = 12.dp)),
-                    color = Filament,
+                    // Коли зникли всі файли, позиція втрачає сенс до перепривʼязки:
+                    // смужка лишається (число правдиве), але гасне, щоб картка не
+                    // читалася як готова до відтворення. При частковій втраті колір
+                    // не чіпаємо — решту розділів слухати можна.
+                    color = if (missingFiles?.isWhole == true) {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    } else {
+                        Filament
+                    },
                     trackColor = trackSurface,
                 )
             }
@@ -358,24 +422,12 @@ fun BookCard(
                         }
                     }
                 }
-            } else if (hasMissingFiles) {
-                Surface(
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.errorContainer,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(Spacing.s)
-                        .size(24.dp),
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            Icons.Filled.Warning,
-                            contentDescription = stringResource(R.string.book_files_missing_badge),
-                            modifier = Modifier.size(14.dp),
-                            tint = MaterialTheme.colorScheme.onErrorContainer,
-                        )
-                    }
-                }
+            } else if (missingFiles != null) {
+                MissingFilesBadge(
+                    missingFiles,
+                    compact = false,
+                    modifier = Modifier.align(Alignment.TopEnd).padding(Spacing.s),
+                )
             }
         }
         Spacer(Modifier.height(Spacing.s))
@@ -414,7 +466,7 @@ fun BookRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     onLongClick: () -> Unit = {},
-    hasMissingFiles: Boolean = false,
+    missingFiles: MissingFiles? = null,
     isMultiSelect: Boolean = false,
     isSelected: Boolean = false,
 ) {
@@ -471,24 +523,12 @@ fun BookRow(
                     }
                 }
             }
-            if (hasMissingFiles && !isMultiSelect) {
-                Surface(
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.errorContainer,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(Spacing.hair)
-                        .size(18.dp),
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            Icons.Filled.Warning,
-                            contentDescription = stringResource(R.string.book_files_missing_badge),
-                            modifier = Modifier.size(10.dp),
-                            tint = MaterialTheme.colorScheme.onErrorContainer,
-                        )
-                    }
-                }
+            if (missingFiles != null && !isMultiSelect) {
+                MissingFilesBadge(
+                    missingFiles,
+                    compact = true,
+                    modifier = Modifier.align(Alignment.TopEnd).padding(Spacing.hair),
+                )
             }
         }
 
@@ -532,7 +572,15 @@ fun BookRow(
                 LinearProgressIndicator(
                     progress = { p },
                     modifier = Modifier.fillMaxWidth().height(3.dp).clip(CircleShape),
-                    color = Filament,
+                    // Коли зникли всі файли, позиція втрачає сенс до перепривʼязки:
+                    // смужка лишається (число правдиве), але гасне, щоб картка не
+                    // читалася як готова до відтворення. При частковій втраті колір
+                    // не чіпаємо — решту розділів слухати можна.
+                    color = if (missingFiles?.isWhole == true) {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    } else {
+                        Filament
+                    },
                     trackColor = trackSurface,
                 )
             }

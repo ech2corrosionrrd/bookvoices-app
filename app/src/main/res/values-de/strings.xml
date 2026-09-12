@@ -17,6 +17,11 @@
     <string name="sort_last_played">Zuletzt</string>
     <string name="sort_title">Titel</string>
     <string name="sort_author">Autor</string>
+    <string name="sort_series">Reihe</string>
+    <string name="sort_menu_title">Sortieren nach</string>
+    <string name="sort_with_headers">mit Gruppen</string>
+    <string name="shelf_series_and_tags">Reihen &amp; Tags</string>
+    <string name="tags_title">Tags</string>
     <string name="sort_progress">Fortschritt</string>
     <string name="sort_added_at">Neu</string>
     <string name="resume_section">Weiterhören</string>
@@ -62,7 +67,6 @@
     <string name="quick_presets">Schnellwahl</string>
     <string name="skip_silence">Stille überspringen</string>
     <string name="skip_silence_desc">Pausen zwischen Wörtern verkürzen</string>
-    <string name="speech_clarity">Sprachverständlichkeit</string>
     <string name="speech_clarity_desc">Stimmfrequenzen für bessere Verständlichkeit anheben</string>
 
     <string name="bookmarks_title">Lesezeichen</string>
@@ -209,7 +213,14 @@
     <string name="relink_partial">%1$d von %2$d Dateien verknüpft</string>
     <string name="relink_failed">In diesem Ordner wurden keine passenden Dateien gefunden</string>
 
-    <string name="book_files_missing_badge">Dateien fehlen</string>
+    <plurals name="book_files_missing_count">
+        <item quantity="one">%1$d von %2$d Datei fehlt</item>
+        <item quantity="other">%1$d von %2$d Dateien fehlen</item>
+    </plurals>
+    <string name="shelf_books_of_total">%1$d von %2$d</string>
+    <string name="shelf_section_pinned">Angeheftet</string>
+    <string name="shelf_section_no_series">Ohne Reihe</string>
+    <string name="shelf_scroll_to_top">Nach oben</string>
     <string name="author_stats_books">Bücher</string>
     <string name="author_stats_duration">Dauer</string>
     <string name="author_stats_listened">Gehört</string>
@@ -328,14 +339,10 @@
     <string name="export_bookmarks_title">Meine BookVoices-Lesezeichen</string>
     <string name="export_bookmarks_total">Lesezeichen gesamt: %d</string>
     <string name="export_catalog">Buchkatalog exportieren</string>
-    <string name="export_catalog_desc">Leseliste im Markdown-Format speichern oder teilen</string>
     <string name="export_catalog_title">Meine BookVoices Hörbuchbibliothek</string>
     <string name="export_catalog_exported_at">Exportiert am: %s</string>
     <string name="export_catalog_total_books">Bücher gesamt: %d</string>
     <string name="export_catalog_total_duration">Gesamtdauer: %s</string>
-    <string name="language_select_title">Oberflächensprache</string>
-    <string name="system_default_lang">Systemstandard</string>
-    <string name="change_language">Ändern</string>
     <string name="auto_bookmark_bluetooth">Auto-Lesezeichen bei Bluetooth-Trennung</string>
     <string name="auto_bookmark_bluetooth_desc">Speichert automatisch ein Lesezeichen beim Trennen von Auto oder Kopfhörern</string>
     <string name="bookmark_bluetooth_disconnected">Bluetooth getrennt um %s</string>
@@ -343,7 +350,6 @@
     <string name="jump_back_to">Zurück zu %s</string>
     <string name="jump_back_dismiss">Ausblenden</string>
     <string name="pro_title">BookVoices Pro</string>
-    <string name="pro_badge">💎 Pro</string>
     <string name="pro_tagline">Einmal zahlen, für immer nutzen. Ohne Abo und ohne Werbung</string>
     <string name="pro_lifetime_desc">Lebenslange Premium-Lizenz ohne wiederkehrende Kosten</string>
     <string name="pro_benefit_skip_silence">Dynamisches Überspringen von Sprechpausen</string>
@@ -364,7 +370,6 @@
     <string name="characters_title">Charaktere</string>
     <string name="characters_empty">Noch keine Charaktere hinzugefügt</string>
     <string name="add_character">Charakter hinzufügen</string>
-    <string name="edit_character">Charakter bearbeiten</string>
     <string name="delete_character">Charakter löschen</string>
     <string name="character_name">Name des Charakters</string>
     <string name="character_role">Rolle (z. B. Protagonist, Detektiv)</string>

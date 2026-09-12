@@ -17,6 +17,11 @@
     <string name="sort_last_played">Ostatnio</string>
     <string name="sort_title">Tytuł</string>
     <string name="sort_author">Autor</string>
+    <string name="sort_series">Cykl</string>
+    <string name="sort_menu_title">Sortuj według</string>
+    <string name="sort_with_headers">z grupami</string>
+    <string name="shelf_series_and_tags">Cykle i etykiety</string>
+    <string name="tags_title">Etykiety</string>
     <string name="sort_progress">Postęp</string>
     <string name="sort_added_at">Nowe</string>
     <string name="resume_section">Kontynuuj słuchanie</string>
@@ -62,7 +67,6 @@
     <string name="quick_presets">Szybkie ustawienia</string>
     <string name="skip_silence">Pomijanie ciszy</string>
     <string name="skip_silence_desc">Skracanie przerw między słowami</string>
-    <string name="speech_clarity">Klarowność mowy</string>
     <string name="speech_clarity_desc">Wzmocnienie częstotliwości głosu dla lepszej czytelności</string>
 
     <string name="bookmarks_title">Zakładki</string>
@@ -215,7 +219,16 @@
     <string name="relink_partial">Powiązano %1$d z %2$d plików</string>
     <string name="relink_failed">W tym folderze nie znaleziono plików tej książki</string>
 
-    <string name="book_files_missing_badge">Pliki niedostępne</string>
+    <plurals name="book_files_missing_count">
+        <item quantity="one">Brakuje %1$d z %2$d pliku</item>
+        <item quantity="few">Brakuje %1$d z %2$d plików</item>
+        <item quantity="many">Brakuje %1$d z %2$d plików</item>
+        <item quantity="other">Brakuje %1$d z %2$d plików</item>
+    </plurals>
+    <string name="shelf_books_of_total">%1$d z %2$d</string>
+    <string name="shelf_section_pinned">Przypięte</string>
+    <string name="shelf_section_no_series">Poza cyklami</string>
+    <string name="shelf_scroll_to_top">Do góry</string>
     <string name="author_stats_books">Książki</string>
     <string name="author_stats_duration">Czas trwania</string>
     <string name="author_stats_listened">Przesłuchano</string>
@@ -344,14 +357,10 @@
     <string name="export_bookmarks_title">Moje zakładki BookVoices</string>
     <string name="export_bookmarks_total">Łącznie zakładek: %d</string>
     <string name="export_catalog">Eksportuj katalog książek</string>
-    <string name="export_catalog_desc">Zapisz lub udostępnij listę książek w formacie Markdown</string>
     <string name="export_catalog_title">Moja biblioteka audiobooków BookVoices</string>
     <string name="export_catalog_exported_at">Wyeksportowano: %s</string>
     <string name="export_catalog_total_books">Łącznie książek: %d</string>
     <string name="export_catalog_total_duration">Całkowity czas: %s</string>
-    <string name="language_select_title">Język interfejsu</string>
-    <string name="system_default_lang">Domyślny systemowy</string>
-    <string name="change_language">Zmień</string>
     <string name="auto_bookmark_bluetooth">Auto-zakładka przy rozłączeniu Bluetooth</string>
     <string name="auto_bookmark_bluetooth_desc">Automatycznie zapisuje zakładkę po odłączeniu słuchawek lub auta</string>
     <string name="bookmark_bluetooth_disconnected">Rozłączenie Bluetooth o %s</string>
@@ -359,7 +368,6 @@
     <string name="jump_back_to">Wróć do %s</string>
     <string name="jump_back_dismiss">Zamknij</string>
     <string name="pro_title">BookVoices Pro</string>
-    <string name="pro_badge">💎 Pro</string>
     <string name="pro_tagline">Raz na zawsze. Bez subskrypcji i bez reklam</string>
     <string name="pro_lifetime_desc">Dożywotnia licencja premium bez opłat cyklicznych</string>
     <string name="pro_benefit_skip_silence">Dynamiczne pomijanie ciszy i pauz</string>
@@ -380,7 +388,6 @@
     <string name="characters_title">Postacie</string>
     <string name="characters_empty">Brak dodanych postaci</string>
     <string name="add_character">Dodaj postać</string>
-    <string name="edit_character">Edytuj postać</string>
     <string name="delete_character">Usuń postać</string>
     <string name="character_name">Imię postaci</string>
     <string name="character_role">Rola (np. Główny bohater, Detektyw)</string>

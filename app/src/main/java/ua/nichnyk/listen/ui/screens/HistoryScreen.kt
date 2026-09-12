@@ -359,8 +359,8 @@ private fun formatSessionTime(timestamp: Long): String {
 @Composable
 fun WeeklyActivityCard(
     stats: ua.nichnyk.listen.data.WeeklyStats,
-    period: StatsPeriod = StatsPeriod.Week,
     modifier: Modifier = Modifier,
+    period: StatsPeriod = StatsPeriod.Week,
 ) {
     val chartTitle = when (period) {
         StatsPeriod.Week -> stringResource(R.string.weekly_activity)

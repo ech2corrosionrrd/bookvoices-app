@@ -4,7 +4,6 @@ plugins {
     // Оголошуємо версію тут один раз, інакше Gradle відмовляється перевіряти
     // сумісність: «плагін уже на classpath з невідомою версією».
     alias(libs.plugins.android.test) apply false
-    alias(libs.plugins.kotlin.android) apply false
     alias(libs.plugins.kotlin.compose) apply false
     alias(libs.plugins.kotlin.serialization) apply false
     alias(libs.plugins.ksp) apply false

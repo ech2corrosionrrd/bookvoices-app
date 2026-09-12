@@ -94,6 +94,7 @@ fun BookmarksScreen(
     }
 
     val shareTitle = stringResource(R.string.share_bookmarks)
+    val exportSubject = stringResource(R.string.export_bookmarks_title)
 
     Box(Modifier.fillMaxSize()) {
     LazyColumn(
@@ -119,7 +120,7 @@ fun BookmarksScreen(
                             text = vm.exportBookmarksMarkdown(),
                             fileName = "bookvoices-bookmarks.md",
                             mimeType = "text/plain",
-                            subject = context.getString(R.string.export_bookmarks_title),
+                            subject = exportSubject,
                             chooserTitle = shareTitle,
                         )
                         if (!ok) snack.showSnackbar(shareFailedMsg)

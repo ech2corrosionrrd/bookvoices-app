@@ -38,6 +38,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ProcessLifecycleOwner
+import ua.nichnyk.listen.forAppLocale
 import ua.nichnyk.listen.AppLog
 import ua.nichnyk.listen.R
 import ua.nichnyk.listen.data.BookWithChapters
@@ -336,13 +337,13 @@ class PlayerManager(
             if (c != null) publish(c)
             val io = error.errorCode in IO_ERROR_CODES
             val msg = if (io) {
-                app.getString(R.string.file_unavailable)
+                app.forAppLocale().getString(R.string.file_unavailable)
             } else {
-                app.getString(R.string.play_failed)
+                app.forAppLocale().getString(R.string.play_failed)
             }
             if (io && c != null && c.isConnected && c.hasNextMediaItem() && errorSkipCount < MAX_ERROR_SKIPS) {
                 errorSkipCount++
-                _errors.trySend(app.getString(R.string.skipped_missing_chapter))
+                _errors.trySend(app.forAppLocale().getString(R.string.skipped_missing_chapter))
                 runCatching {
                     c.seekToNextMediaItem()
                     c.prepare()
@@ -465,7 +466,7 @@ class PlayerManager(
             // першою главою: закладка мовчки вмикала книгу з початку на своїй
             // позиції. Глави з таким id справді може не бути — доливання файлів
             // і перепривʼязка дають новий набір, — і про це треба сказати.
-            _errors.trySend(app.getString(R.string.bookmark_chapter_missing))
+            _errors.trySend(app.forAppLocale().getString(R.string.bookmark_chapter_missing))
             return
         }
         play(book, index, positionMs, applySmartRewind = false)
@@ -1030,7 +1031,7 @@ class PlayerManager(
      */
     fun errorMessage(error: Throwable): String =
         (error as? PlaybackMessageException)?.message?.takeIf { it.isNotBlank() }
-            ?: app.getString(R.string.play_failed)
+            ?: app.forAppLocale().getString(R.string.play_failed)
 
     private fun liveController(): MediaController? = controller?.takeIf { it.isConnected }
 
@@ -1095,7 +1096,7 @@ class PlayerManager(
                 delay(300L * (attempt + 1))
             }
         }
-        error(last?.message ?: app.getString(R.string.player_not_ready))
+        error(last?.message ?: app.forAppLocale().getString(R.string.player_not_ready))
     }
 
     private suspend fun requireController(): MediaController {
@@ -1158,7 +1159,7 @@ class PlayerManager(
     private suspend fun prepareLocked(book: BookWithChapters, chapterIndex: Int, positionMs: Long, autoPlay: Boolean) {
             val c = requireController()
             val chapters = book.chapters.sortedBy { it.index }
-            if (chapters.isEmpty()) throw PlaybackMessageException(app.getString(R.string.play_failed))
+            if (chapters.isEmpty()) throw PlaybackMessageException(app.forAppLocale().getString(R.string.play_failed))
 
             val uriOk = chapters.map { it.uri }.distinct().associateWith { repo.isAudioAccessible(it) }
             val (index, startPos) = resolvePlayableStart(
@@ -1166,7 +1167,7 @@ class PlayerManager(
                 requestedPositionMs = positionMs,
                 playable = chapters.map { uriOk[it.uri] == true },
             ) ?: throw PlaybackMessageException(
-                app.getString(R.string.file_unavailable_named, chapters.first().title),
+                app.forAppLocale().getString(R.string.file_unavailable_named, chapters.first().title),
             )
 
             val items = chapters.map { ch ->

@@ -2,7 +2,6 @@ import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
     alias(libs.plugins.androidx.baselineprofile)
@@ -16,7 +15,7 @@ val releaseKeystore: Properties? = rootProject.file("keystore.properties")
 
 android {
     namespace = "ua.nichnyk.listen"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "app.bookvoices"
@@ -68,8 +67,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
+    kotlin {
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        }
     }
 
     buildFeatures {
@@ -161,4 +162,8 @@ dependencies {
     androidTestImplementation(libs.androidx.test.core)
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.room.testing)
+    // Тести Compose: перевіряють намальоване, а не лише дані під ним. Манифест
+    // debug-збірки приносить порожню ComponentActivity, у якій живе createComposeRule.
+    androidTestImplementation(libs.compose.ui.test.junit4)
+    debugImplementation(libs.compose.ui.test.manifest)
 }

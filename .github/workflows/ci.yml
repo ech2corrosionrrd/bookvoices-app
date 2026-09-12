@@ -5,6 +5,14 @@ on:
     branches: [main, master]
   pull_request:
 
+# Права токена: на pull_request `dorny/paths-filter` питає список змінених файлів
+# через GitHub API, а типовий GITHUB_TOKEN такого доступу не має — крок падає з
+# «Resource not accessible by integration». На push цього не видно: там фільтр
+# читає git, а не API, тож вада спливла лише на першому ж PR.
+permissions:
+  contents: read
+  pull-requests: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -19,7 +27,9 @@ jobs:
       android: ${{ steps.filter.outputs.android }}
     steps:
       - uses: actions/checkout@v7
-      - uses: dorny/paths-filter@v3
+      # v4 відрізняється від v3 лише рантаймом node24: GitHub із 19.09.2025 гонить
+      # node20-дії на node24 примусово й попереджає про це в кожному прогоні.
+      - uses: dorny/paths-filter@v4
         id: filter
         with:
           filters: |

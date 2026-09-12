@@ -1,6 +1,5 @@
 plugins {
     alias(libs.plugins.android.test)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.androidx.baselineprofile)
 }
 
@@ -14,7 +13,7 @@ plugins {
  */
 android {
     namespace = "ua.nichnyk.listen.baseline"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         // Генерація профілю потребує root на пристрої, а це можливо з API 28.
@@ -36,8 +35,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
+    kotlin {
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        }
     }
 
     targetProjectPath = ":app"

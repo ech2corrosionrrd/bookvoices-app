@@ -73,7 +73,7 @@ fun AuthorScreen(
                 }
             }
     }
-    val missingFilesBooks by libraryVm.missingFilesBooks.collectAsStateWithLifecycle()
+    val missingFileCounts by libraryVm.missingFileCounts.collectAsStateWithLifecycle()
     val totalDurationMs = authorBooks.sumOf { it.book.durationMs }
     val totalListenedMs = authorBooks.sumOf { it.absolutePosition() }
 
@@ -172,7 +172,7 @@ fun AuthorScreen(
                     BookCard(
                         item = item,
                         onClick = { onOpenBook(item.book.id) },
-                        hasMissingFiles = missingFilesBooks.contains(item.book.id),
+                        missingFiles = missingFileCounts[item.book.id],
                     )
                 }
             }

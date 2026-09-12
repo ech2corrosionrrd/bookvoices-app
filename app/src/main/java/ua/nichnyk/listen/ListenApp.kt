@@ -107,6 +107,7 @@ class ListenApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        enableStrictModeInDebug()
         container = AppContainer(this)
         container.player.initialize()
         appScope.launch {
@@ -157,4 +158,37 @@ class ListenApp : Application() {
             }
         }
     }
+    /**
+     * StrictMode в debug: ловить дискові операції на головному потоці й закриті
+     * ресурси, що витекли, — тобто той самий клас помилок, який у користувача
+     * виглядає як ANR або як застосунок, «що з часом гальмує».
+     *
+     * Лише `penaltyLog`, ніколи `penaltyDeath`. Порушення тут не завжди наші:
+     * Play Billing, media3 і сам фреймворк читають диск на головному потоці при
+     * старті, і падіння на першому ж такому місці зробило б debug-збірку
+     * непридатною — а отже, StrictMode вимкнули б зовсім.
+     *
+     * У release гілка недосяжна: `BuildConfig.DEBUG` там константно false, і R8
+     * викидає і перевірку, і тіло.
+     */
+    private fun enableStrictModeInDebug() {
+        if (!BuildConfig.DEBUG) return
+        android.os.StrictMode.setThreadPolicy(
+            android.os.StrictMode.ThreadPolicy.Builder()
+                .detectDiskReads()
+                .detectDiskWrites()
+                .detectNetwork()
+                .penaltyLog()
+                .build(),
+        )
+        android.os.StrictMode.setVmPolicy(
+            android.os.StrictMode.VmPolicy.Builder()
+                .detectLeakedClosableObjects()
+                .detectLeakedSqlLiteObjects()
+                .detectActivityLeaks()
+                .penaltyLog()
+                .build(),
+        )
+    }
+
 }

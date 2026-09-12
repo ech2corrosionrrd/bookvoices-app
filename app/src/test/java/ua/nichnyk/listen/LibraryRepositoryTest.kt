@@ -503,4 +503,38 @@ class LibraryRepositoryTest {
         assertEquals(2, shevchenkoBooks.size)
         assertEquals(setOf("b1", "b2"), shevchenkoBooks.map { it.book.id }.toSet())
     }
+    /**
+     * Гуртова перевірка доступності має відповідати поштучній.
+     *
+     * Її переписали на паралельний обхід із дедуплікацією, щоб полиця зі 100 книг
+     * не стояла секунду без позначок; така правка легко з'їдає окремі результати —
+     * тому звіряємо з `isAudioAccessible`, який лишився поштучним.
+     */
+    @Test
+    fun bulkAccessibilityMatchesOneByOne() = runTest {
+        val present = File(context.filesDir, "present.mp3").apply { writeBytes(ByteArray(8)) }
+        val alsoPresent = File(context.filesDir, "also.mp3").apply { writeBytes(ByteArray(8)) }
+        val gone = File(context.filesDir, "gone.mp3")
+
+        val uris = listOf(present, alsoPresent, gone).map { "file://${it.absolutePath}" }
+        val bulk = repo.inaccessibleUris(uris)
+        val oneByOne = uris.filterNot { repo.isAudioAccessible(it) }.toSet()
+
+        assertEquals(oneByOne, bulk)
+        assertEquals(setOf("file://${gone.absolutePath}"), bulk)
+    }
+
+    /** Той самий файл у кількох книгах перевіряється один раз і не двоїться у відповіді. */
+    @Test
+    fun bulkAccessibilityDeduplicatesRepeatedUris() = runTest {
+        val gone = "file://${File(context.filesDir, "missing.mp3").absolutePath}"
+        assertEquals(setOf(gone), repo.inaccessibleUris(listOf(gone, gone, gone)))
+    }
+
+    /** Порожній список не має ходити нікуди й повертає порожній набір. */
+    @Test
+    fun bulkAccessibilityOnEmptyInputReturnsEmpty() = runTest {
+        assertEquals(emptySet<String>(), repo.inaccessibleUris(emptyList()))
+    }
+
 }

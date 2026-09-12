@@ -19,11 +19,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -31,12 +34,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Label
 import androidx.compose.material.icons.automirrored.outlined.ViewList
 import androidx.compose.material.icons.outlined.AddCircleOutline
+import androidx.compose.material.icons.automirrored.outlined.Sort
+import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Checklist
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.GridView
+import androidx.compose.material.icons.outlined.KeyboardArrowUp
 import androidx.compose.material.icons.outlined.LibraryAdd
 import androidx.compose.material.icons.outlined.LibraryMusic
 import androidx.compose.material.icons.outlined.PushPin
@@ -65,7 +71,9 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -80,6 +88,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.launch
 import ua.nichnyk.listen.ui.theme.cardSurface
 import ua.nichnyk.listen.ui.theme.Spacing
 import ua.nichnyk.listen.ui.theme.CardShape
@@ -93,10 +102,11 @@ import ua.nichnyk.listen.ui.components.BookCover
 import ua.nichnyk.listen.ui.components.BookRow
 import ua.nichnyk.listen.ui.components.EmptyFilter
 import ua.nichnyk.listen.ui.components.EmptyShelf
+import ua.nichnyk.listen.ui.components.MissingFilesBadge
 import ua.nichnyk.listen.ui.components.greetingLine
 import ua.nichnyk.listen.ui.components.listeningTimeText
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun LibraryScreen(
     vm: LibraryViewModel,
@@ -107,6 +117,8 @@ fun LibraryScreen(
     onOpenSeries: (String) -> Unit = {},
 ) {
     val context = LocalContext.current
+    // Див. SettingsScreen: ресурс читає composable, а не обробник події.
+    val filePickerUnavailable = stringResource(R.string.file_picker_unavailable)
     val books by vm.books.collectAsStateWithLifecycle()
     val query by vm.query.collectAsStateWithLifecycle()
     val isSearching by vm.isSearching.collectAsStateWithLifecycle()
@@ -119,6 +131,7 @@ fun LibraryScreen(
     val isMultiSelect by vm.isMultiSelect.collectAsStateWithLifecycle()
     val selectedBookIds by vm.selectedBookIds.collectAsStateWithLifecycle()
     val missingFilesBooks by vm.missingFilesBooks.collectAsStateWithLifecycle()
+    val missingFileCounts by vm.missingFileCounts.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
     val importProgress by vm.importProgress.collectAsStateWithLifecycle()
     val pendingRename by vm.pendingRename.collectAsStateWithLifecycle()
@@ -128,6 +141,7 @@ fun LibraryScreen(
 
     var addSheet by remember { mutableStateOf(false) }
     var sortMenuOpen by remember { mutableStateOf(false) }
+    var seriesTagSheet by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<BookWithChapters?>(null) }
     var pendingBatchDelete by remember { mutableStateOf(false) }
     var batchTagDialog by remember { mutableStateOf(false) }
@@ -239,6 +253,64 @@ fun LibraryScreen(
                                 contentDescription = if (settings.shelfViewMode == ShelfViewMode.GRID) stringResource(R.string.view_mode_list) else stringResource(R.string.view_mode_grid),
                             )
                         }
+                        // Сортування живе тут, а не серед чипів фільтра.
+                        //
+                        // У тому рядку після чотирьох фільтрів ідуть усі цикли й усі
+                        // мітки, тобто його довжина росте з бібліотекою: на сотні книг
+                        // сортування виявлялося за екраном, і дістатися до нього можна
+                        // було лише горизонтальним гортанням крізь дані.
+                        Box {
+                            IconButton(onClick = { sortMenuOpen = true }) {
+                                Icon(
+                                    Icons.AutoMirrored.Outlined.Sort,
+                                    contentDescription = stringResource(sortOrder.titleRes),
+                                )
+                            }
+                            androidx.compose.material3.DropdownMenu(
+                                expanded = sortMenuOpen,
+                                onDismissRequest = { sortMenuOpen = false },
+                            ) {
+                                // Заголовок і позначка поточного порядку: сама
+                                // іконка не каже, що це меню й що в ньому вибрано.
+                                Text(
+                                    stringResource(R.string.sort_menu_title),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(
+                                        start = Spacing.l, end = Spacing.l,
+                                        top = Spacing.s, bottom = Spacing.xs,
+                                    ),
+                                )
+                                ua.nichnyk.listen.data.BookSortOrder.entries.forEach { order ->
+                                    val groups = order == ua.nichnyk.listen.data.BookSortOrder.Author ||
+                                        order == ua.nichnyk.listen.data.BookSortOrder.Series
+                                    androidx.compose.material3.DropdownMenuItem(
+                                        text = { Text(stringResource(order.titleRes)) },
+                                        // Підпис там, де сортування ще й розбиває
+                                        // полицю на групи: інакше поява заголовків
+                                        // виглядає як несподіванка.
+                                        trailingIcon = if (groups) {
+                                            {
+                                                Text(
+                                                    stringResource(R.string.sort_with_headers),
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                )
+                                            }
+                                        } else null,
+                                        leadingIcon = {
+                                            if (order == sortOrder) {
+                                                Icon(Icons.Outlined.Check, contentDescription = null)
+                                            }
+                                        },
+                                        onClick = {
+                                            vm.setSortOrder(order)
+                                            sortMenuOpen = false
+                                        },
+                                    )
+                                }
+                            }
+                        }
                         IconButton(onClick = { vm.startMultiSelect() }) {
                             Icon(Icons.Outlined.Checklist, contentDescription = stringResource(R.string.multi_select))
                         }
@@ -270,51 +342,45 @@ fun LibraryScreen(
                         enabled = enabled,
                     )
                 }
-                Box {
-                    val sortTitle = stringResource(sortOrder.titleRes)
+                // Цикли й мітки — за одним чипом, а не розсипом у цьому ж рядку.
+                //
+                // Доти сюди виводився кожен цикл і кожна мітка, тобто довжина рядка
+                // росла з бібліотекою: на сотні книг з десятком циклів і півтора
+                // десятком міток керування полицею тонуло в даних, і дістатися до
+                // потрібного можна було лише горизонтальним гортанням. Тепер рядок
+                // має сталу довжину: чотири фільтри плюс цей чип.
+                if (allSeries.isNotEmpty() || allTags.isNotEmpty()) {
                     FilterChip(
-                        selected = false,
-                        onClick = { sortMenuOpen = true },
-                        label = { Text("⇅ $sortTitle") },
-                    )
-                    androidx.compose.material3.DropdownMenu(
-                        expanded = sortMenuOpen,
-                        onDismissRequest = { sortMenuOpen = false },
-                    ) {
-                        ua.nichnyk.listen.data.BookSortOrder.entries.forEach { order ->
-                            androidx.compose.material3.DropdownMenuItem(
-                                text = { Text(stringResource(order.titleRes)) },
-                                onClick = {
-                                    vm.setSortOrder(order)
-                                    sortMenuOpen = false
-                                },
+                        selected = selectedSeries != null || selectedTag != null,
+                        onClick = { seriesTagSheet = true },
+                        label = {
+                            Text(
+                                selectedSeries
+                                    ?: selectedTag?.let { "#$it" }
+                                    ?: stringResource(R.string.shelf_series_and_tags),
                             )
-                        }
-                    }
-                }
-                allSeries.forEach { seriesName ->
-                    FilterChip(
-                        selected = selectedSeries == seriesName,
-                        onClick = {
-                            vm.setSelectedSeries(if (selectedSeries == seriesName) null else seriesName)
                         },
-                        label = { Text(seriesName) },
                     )
                 }
-                selectedSeries?.let { seriesName ->
-                    TextButton(onClick = { onOpenSeries(seriesName) }) {
-                        Text(stringResource(R.string.open_series))
-                    }
-                }
-                allTags.forEach { tag ->
-                    FilterChip(
-                        selected = selectedTag == tag,
-                        onClick = {
-                            vm.setSelectedTag(if (selectedTag == tag) null else tag)
-                        },
-                        label = { Text("#$tag") },
-                    )
-                }
+            }
+
+            // Скільки книг на полиці — і скільки з них зараз видно.
+            //
+            // Полиця єдина цього не казала: лічильник `books_count` уже був, але
+            // жив на екранах автора, циклу й у картці статистики. Без нього після
+            // фільтра чи пошуку не видно, чи все показано, чи там ще двадцять нижче.
+            if (books.isNotEmpty() && !isMultiSelect) {
+                val narrowed = visible.size != books.size
+                Spacer(Modifier.height(Spacing.m))
+                Text(
+                    if (narrowed) {
+                        stringResource(R.string.shelf_books_of_total, visible.size, books.size)
+                    } else {
+                        pluralStringResource(R.plurals.books_count, books.size, books.size)
+                    },
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
 
             if (newBookCount > 0 && !isMultiSelect) {
@@ -387,7 +453,20 @@ fun LibraryScreen(
                                 .padding(end = Spacing.xxs),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            BookCover(item.book.coverPath, Modifier.size(72.dp), corner = 8.dp)
+                            // Бейдж потрібен саме тут, а не лише на полиці нижче:
+                            // стрічка стоїть найвище, тап по ній одразу вмикає
+                            // книгу, і зламана виглядала точнісінько як ціла —
+                            // єдиною відповіддю був снекбар про зниклий файл.
+                            Box {
+                                BookCover(item.book.coverPath, Modifier.size(72.dp), corner = 8.dp)
+                                missingFileCounts[item.book.id]?.let { missing ->
+                                    MissingFilesBadge(
+                                        missing,
+                                        compact = true,
+                                        modifier = Modifier.align(Alignment.TopEnd).padding(Spacing.hair),
+                                    )
+                                }
+                            }
                             Spacer(Modifier.width(Spacing.s))
                             Column(Modifier.weight(1f)) {
                                 Text(item.book.title, style = MaterialTheme.typography.titleMedium)
@@ -404,6 +483,54 @@ fun LibraryScreen(
         }
     }
 
+    // Заголовки груп — лише при сортуванні за автором.
+    //
+    // Досі полиця вміла тільки пласке сортування: 100 книг «за автором» — це
+    // суцільний алфавітний потік, у якому не видно, де скінчився один автор.
+    // Експорт каталогу в Markdown групує за автором давно; екран, з якого його
+    // експортують, — ні.
+    //
+    // Піни йдуть окремою першою групою, бо ShelfQuery тримає їх угорі незалежно
+    // від сортування: без власного заголовка той самий автор отримав би два
+    // заголовки — один над закріпленою книгою, другий над рештою своїх.
+    val pinnedLabel = stringResource(R.string.shelf_section_pinned)
+    val unknownAuthorLabel = stringResource(R.string.unknown_author)
+    val noSeriesLabel = stringResource(R.string.shelf_section_no_series)
+    val grouped: List<ShelfEntry> = remember(
+        visible, sortOrder, pinnedLabel, unknownAuthorLabel, noSeriesLabel,
+    ) {
+        val groupsBy: ((ua.nichnyk.listen.data.BookWithChapters) -> String)? = when (sortOrder) {
+            ua.nichnyk.listen.data.BookSortOrder.Author -> { item ->
+                item.book.author.ifBlank { unknownAuthorLabel }
+            }
+            ua.nichnyk.listen.data.BookSortOrder.Series -> { item ->
+                item.book.series?.takeIf { it.isNotBlank() } ?: noSeriesLabel
+            }
+            else -> null
+        }
+        if (groupsBy == null) {
+            visible.map { ShelfEntry.Book(it) }
+        } else {
+            buildList {
+                var lastHeader: String? = null
+                visible.forEach { item ->
+                    val header = if (item.book.pinned) pinnedLabel else groupsBy(item)
+                    if (header != lastHeader) {
+                        add(ShelfEntry.Header(header))
+                        lastHeader = header
+                    }
+                    add(ShelfEntry.Book(item))
+                }
+            }
+        }
+    }
+
+    // Стан прокрутки піднято, бо ним тепер керує кнопка «вгору». Доти обидва
+    // контейнери користувалися внутрішнім станом за замовчуванням.
+    val gridState = rememberLazyGridState()
+    val listState = rememberLazyListState()
+    val shelfScope = rememberCoroutineScope()
+
     Box(Modifier.fillMaxSize()) {
         PullToRefreshBox(
             isRefreshing = libraryRefreshing,
@@ -412,6 +539,7 @@ fun LibraryScreen(
         ) {
         if (settings.shelfViewMode == ShelfViewMode.GRID) {
             LazyVerticalGrid(
+                state = gridState,
                 columns = GridCells.Adaptive(minSize = 150.dp),
                 contentPadding = PaddingValues(start = Spacing.xl, end = Spacing.xl, top = Spacing.m, bottom = 120.dp),
                 horizontalArrangement = Arrangement.spacedBy(Spacing.l),
@@ -435,26 +563,36 @@ fun LibraryScreen(
                         )
                     }
                 } else {
-                    items(visible, key = { it.book.id }) { item ->
-                        BookCard(
-                            item,
-                            onClick = {
-                                if (isMultiSelect) vm.toggleSelectBook(item.book.id)
-                                else onOpenBook(item.book.id)
-                            },
-                            onLongClick = {
-                                if (isMultiSelect) vm.toggleSelectBook(item.book.id)
-                                else bookMenuTarget = item
-                            },
-                            hasMissingFiles = missingFilesBooks.contains(item.book.id),
-                            isMultiSelect = isMultiSelect,
-                            isSelected = selectedBookIds.contains(item.book.id),
-                        )
+                    grouped.forEach { entry ->
+                        when (entry) {
+                            is ShelfEntry.Header -> item(
+                                span = { GridItemSpan(maxLineSpan) },
+                                key = "header:${entry.title}",
+                            ) { ShelfGroupHeader(entry.title) }
+                            is ShelfEntry.Book -> item(key = entry.item.book.id) {
+                                val item = entry.item
+                                BookCard(
+                                    item,
+                                    onClick = {
+                                        if (isMultiSelect) vm.toggleSelectBook(item.book.id)
+                                        else onOpenBook(item.book.id)
+                                    },
+                                    onLongClick = {
+                                        if (isMultiSelect) vm.toggleSelectBook(item.book.id)
+                                        else bookMenuTarget = item
+                                    },
+                                    missingFiles = missingFileCounts[item.book.id],
+                                    isMultiSelect = isMultiSelect,
+                                    isSelected = selectedBookIds.contains(item.book.id),
+                                )
+                            }
+                        }
                     }
                 }
             }
         } else {
             LazyColumn(
+                state = listState,
                 contentPadding = PaddingValues(start = Spacing.l, end = Spacing.l, top = Spacing.m, bottom = 120.dp),
                 verticalArrangement = Arrangement.spacedBy(Spacing.s),
             ) {
@@ -476,21 +614,29 @@ fun LibraryScreen(
                         )
                     }
                 } else {
-                    items(visible, key = { it.book.id }) { item ->
-                        BookRow(
-                            item,
-                            onClick = {
-                                if (isMultiSelect) vm.toggleSelectBook(item.book.id)
-                                else onOpenBook(item.book.id)
-                            },
-                            onLongClick = {
-                                if (isMultiSelect) vm.toggleSelectBook(item.book.id)
-                                else bookMenuTarget = item
-                            },
-                            hasMissingFiles = missingFilesBooks.contains(item.book.id),
-                            isMultiSelect = isMultiSelect,
-                            isSelected = selectedBookIds.contains(item.book.id),
-                        )
+                    grouped.forEach { entry ->
+                        when (entry) {
+                            is ShelfEntry.Header -> stickyHeader(key = "header:${entry.title}") {
+                                ShelfGroupHeader(entry.title)
+                            }
+                            is ShelfEntry.Book -> item(key = entry.item.book.id) {
+                                val item = entry.item
+                                BookRow(
+                                    item,
+                                    onClick = {
+                                        if (isMultiSelect) vm.toggleSelectBook(item.book.id)
+                                        else onOpenBook(item.book.id)
+                                    },
+                                    onLongClick = {
+                                        if (isMultiSelect) vm.toggleSelectBook(item.book.id)
+                                        else bookMenuTarget = item
+                                    },
+                                    missingFiles = missingFileCounts[item.book.id],
+                                    isMultiSelect = isMultiSelect,
+                                    isSelected = selectedBookIds.contains(item.book.id),
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -498,6 +644,48 @@ fun LibraryScreen(
         }
 
         if (!isMultiSelect) {
+            // «Вгору» — бо іншого способу стрибнути на полиці немає: ні смужки
+            // прокрутки, ні алфавітного покажчика. Сотня книг у списку — це
+            // близько двадцяти екранів, і повернення до початку коштувало стільки
+            // ж гортання, скільки й дорога вниз.
+            // derivedStateOf, а не пряме читання: `firstVisibleItemIndex` змінюється
+            // на кожен рядок прокрутки, і читання його просто в композиції
+            // перемальовувало б усю полицю під час скролу — саме те, що кнопка
+            // «вгору» мала полегшити. Так рекомпозиція настає лише тоді, коли
+            // змінилася сама відповідь «далеко чи ні».
+            val scrolledFar by remember(settings.shelfViewMode) {
+                derivedStateOf {
+                    val first = if (settings.shelfViewMode == ShelfViewMode.GRID) {
+                        gridState.firstVisibleItemIndex
+                    } else {
+                        listState.firstVisibleItemIndex
+                    }
+                    first > SCROLL_TOP_AFTER_ITEMS
+                }
+            }
+            androidx.compose.animation.AnimatedVisibility(
+                visible = scrolledFar && !isMultiSelect,
+                enter = androidx.compose.animation.fadeIn(),
+                exit = androidx.compose.animation.fadeOut(),
+                modifier = Modifier.align(Alignment.BottomEnd).padding(end = Spacing.xl, bottom = 168.dp),
+            ) {
+                androidx.compose.material3.SmallFloatingActionButton(
+                    onClick = {
+                        shelfScope.launch {
+                            if (settings.shelfViewMode == ShelfViewMode.GRID) gridState.scrollToItem(0)
+                            else listState.scrollToItem(0)
+                        }
+                    },
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                ) {
+                    Icon(
+                        Icons.Outlined.KeyboardArrowUp,
+                        contentDescription = stringResource(R.string.shelf_scroll_to_top),
+                    )
+                }
+            }
+
             FloatingActionButton(
                 onClick = { if (!busy) addSheet = true },
                 modifier = Modifier.align(Alignment.BottomEnd).padding(end = Spacing.xl, bottom = 96.dp),
@@ -556,6 +744,68 @@ fun LibraryScreen(
         }
     }
 
+    if (seriesTagSheet) {
+        ModalBottomSheet(onDismissRequest = { seriesTagSheet = false }) {
+            Column(
+                Modifier
+                    .padding(horizontal = Spacing.xl)
+                    .padding(bottom = Spacing.xxl),
+            ) {
+                if (allSeries.isNotEmpty()) {
+                    Text(
+                        stringResource(R.string.series),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Spacer(Modifier.height(Spacing.s))
+                    androidx.compose.foundation.layout.FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.s),
+                    ) {
+                        allSeries.forEach { seriesName ->
+                            FilterChip(
+                                selected = selectedSeries == seriesName,
+                                onClick = {
+                                    vm.setSelectedSeries(
+                                        if (selectedSeries == seriesName) null else seriesName,
+                                    )
+                                },
+                                label = { Text(seriesName) },
+                            )
+                        }
+                    }
+                    selectedSeries?.let { seriesName ->
+                        TextButton(onClick = {
+                            seriesTagSheet = false
+                            onOpenSeries(seriesName)
+                        }) {
+                            Text(stringResource(R.string.open_series))
+                        }
+                    }
+                    Spacer(Modifier.height(Spacing.m))
+                }
+                if (allTags.isNotEmpty()) {
+                    Text(
+                        stringResource(R.string.tags_title),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Spacer(Modifier.height(Spacing.s))
+                    androidx.compose.foundation.layout.FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.s),
+                    ) {
+                        allTags.forEach { tag ->
+                            FilterChip(
+                                selected = selectedTag == tag,
+                                onClick = {
+                                    vm.setSelectedTag(if (selectedTag == tag) null else tag)
+                                },
+                                label = { Text("#$tag") },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     if (addSheet) {
         ModalBottomSheet(onDismissRequest = { addSheet = false }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
             Column(Modifier.padding(horizontal = Spacing.xxl).padding(bottom = Spacing.xxxl)) {
@@ -582,7 +832,7 @@ fun LibraryScreen(
                             ),
                         )
                     }.onFailure {
-                        snack(context.getString(R.string.file_picker_unavailable))
+                        snack(filePickerUnavailable)
                     }
                 }) {
                     Icon(Icons.Outlined.LibraryMusic, contentDescription = null)
@@ -594,7 +844,7 @@ fun LibraryScreen(
                     runCatching {
                         pickTree.launch(null)
                     }.onFailure {
-                        snack(context.getString(R.string.file_picker_unavailable))
+                        snack(filePickerUnavailable)
                     }
                 }) {
                     Icon(Icons.Outlined.FolderOpen, contentDescription = null)
@@ -818,3 +1068,33 @@ private fun NewBooksBanner(
         }
     }
 }
+
+/** Рядок полиці: або заголовок групи, або книга. */
+private sealed interface ShelfEntry {
+    data class Header(val title: String) : ShelfEntry
+    data class Book(val item: BookWithChapters) : ShelfEntry
+}
+
+/**
+ * Заголовок групи. Непрозоре тло обовʼязкове: у списку він липкий, і без тла
+ * книги просвічували б крізь нього під час прокрутки.
+ */
+@Composable
+private fun ShelfGroupHeader(title: String) {
+    Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxWidth()) {
+        Text(
+            title,
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(top = Spacing.m, bottom = Spacing.xs),
+        )
+    }
+}
+
+/**
+ * Після скількох елементів показувати кнопку «вгору».
+ *
+ * Приблизно два екрани: раніше вона блимала б на першому ж русі пальця, пізніше —
+ * не з'явилася б там, де вже хочеться повернутися.
+ */
+private const val SCROLL_TOP_AFTER_ITEMS = 12

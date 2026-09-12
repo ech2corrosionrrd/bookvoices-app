@@ -17,6 +17,11 @@
     <string name="sort_last_played">Recientes</string>
     <string name="sort_title">Título</string>
     <string name="sort_author">Autor</string>
+    <string name="sort_series">Saga</string>
+    <string name="sort_menu_title">Ordenar por</string>
+    <string name="sort_with_headers">con grupos</string>
+    <string name="shelf_series_and_tags">Sagas y etiquetas</string>
+    <string name="tags_title">Etiquetas</string>
     <string name="sort_progress">Progreso</string>
     <string name="sort_added_at">Nuevos</string>
     <string name="resume_section">Continuar escuchando</string>
@@ -62,7 +67,6 @@
     <string name="quick_presets">Ajustes rápidos</string>
     <string name="skip_silence">Omitir silencios</string>
     <string name="skip_silence_desc">Acortar las pausas entre palabras</string>
-    <string name="speech_clarity">Claridad de voz</string>
     <string name="speech_clarity_desc">Realzar las frecuencias vocales para mayor inteligibilidad</string>
 
     <string name="bookmarks_title">Marcadores</string>
@@ -209,7 +213,14 @@
     <string name="relink_partial">Se revincularon %1$d de %2$d archivos</string>
     <string name="relink_failed">No se encontraron archivos de este libro en la carpeta</string>
 
-    <string name="book_files_missing_badge">Faltan archivos</string>
+    <plurals name="book_files_missing_count">
+        <item quantity="one">Falta %1$d de %2$d archivo</item>
+        <item quantity="other">Faltan %1$d de %2$d archivos</item>
+    </plurals>
+    <string name="shelf_books_of_total">%1$d de %2$d</string>
+    <string name="shelf_section_pinned">Fijados</string>
+    <string name="shelf_section_no_series">Sin saga</string>
+    <string name="shelf_scroll_to_top">Ir arriba</string>
     <string name="author_stats_books">Libros</string>
     <string name="author_stats_duration">Duración</string>
     <string name="author_stats_listened">Escuchado</string>
@@ -328,14 +339,10 @@
     <string name="export_bookmarks_title">Mis marcadores de BookVoices</string>
     <string name="export_bookmarks_total">Marcadores en total: %d</string>
     <string name="export_catalog">Exportar catálogo de libros</string>
-    <string name="export_catalog_desc">Guardar o compartir la lista de lectura en formato Markdown</string>
     <string name="export_catalog_title">Mi biblioteca de audiolibros BookVoices</string>
     <string name="export_catalog_exported_at">Exportado: %s</string>
     <string name="export_catalog_total_books">Total de libros: %d</string>
     <string name="export_catalog_total_duration">Duración total: %s</string>
-    <string name="language_select_title">Idioma de la interfaz</string>
-    <string name="system_default_lang">Predeterminado del sistema</string>
-    <string name="change_language">Cambiar</string>
     <string name="auto_bookmark_bluetooth">Marcador automático al desconectar Bluetooth</string>
     <string name="auto_bookmark_bluetooth_desc">Guarda automáticamente un marcador al desconectar el coche o los auriculares</string>
     <string name="bookmark_bluetooth_disconnected">Bluetooth desconectado a las %s</string>
@@ -343,7 +350,6 @@
     <string name="jump_back_to">Volver a %s</string>
     <string name="jump_back_dismiss">Ignorar</string>
     <string name="pro_title">BookVoices Pro</string>
-    <string name="pro_badge">💎 Pro</string>
     <string name="pro_tagline">Pago único para siempre. Sin suscripciones ni anuncios</string>
     <string name="pro_lifetime_desc">Licencia premium de por vida sin cuotas mensuales</string>
     <string name="pro_benefit_skip_silence">Omisión dinámica de silencios y pausas</string>
@@ -364,7 +370,6 @@
     <string name="characters_title">Personajes</string>
     <string name="characters_empty">No hay personajes añadidos aún</string>
     <string name="add_character">Añadir personaje</string>
-    <string name="edit_character">Editar personaje</string>
     <string name="delete_character">Eliminar personaje</string>
     <string name="character_name">Nombre del personaje</string>
     <string name="character_role">Rol (ej. Protagonista, Detective)</string>

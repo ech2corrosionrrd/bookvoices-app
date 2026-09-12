@@ -406,13 +406,22 @@ interface LibraryDao {
         DeletedBookmarkEntity::class,
         DeletedTagEntity::class,
     ],
-    version = 12,
+    version = ListenDatabase.VERSION,
     exportSchema = true,
 )
 abstract class ListenDatabase : RoomDatabase() {
     abstract fun library(): LibraryDao
 
     companion object {
+        /**
+         * Версія схеми — одним числом на застосунок.
+         *
+         * Стояла літералом в анотації, і тест наскрізної міграції мусив повторювати
+         * її окремо. Тобто підняття версії лишало б тест перевіряти передостанню
+         * схему — мовчки й саме тоді, коли нова міграція найризикованіша.
+         */
+        const val VERSION = 12
+
         @Volatile
         private var instance: ListenDatabase? = null
 

@@ -260,8 +260,8 @@ private fun ListenAppRoot(container: AppContainer) {
                 settingsVm.restorePurchases { restored ->
                     scope.launch {
                         snack.showSnackbar(
-                            if (restored) app.getString(R.string.pro_restore_success)
-                            else app.getString(R.string.pro_restore_not_found)
+                            if (restored) app.forAppLocale().getString(R.string.pro_restore_success)
+                            else app.forAppLocale().getString(R.string.pro_restore_not_found)
                         )
                     }
                 }

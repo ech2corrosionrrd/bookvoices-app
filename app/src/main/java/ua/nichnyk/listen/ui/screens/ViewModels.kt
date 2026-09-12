@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import ua.nichnyk.listen.forAppLocale
 import ua.nichnyk.listen.R
 import ua.nichnyk.listen.data.BookSortOrder
 import ua.nichnyk.listen.data.BookWithChapters
@@ -36,6 +37,7 @@ import ua.nichnyk.listen.data.ImportOutcome
 import ua.nichnyk.listen.data.ImportProgress
 import ua.nichnyk.listen.data.LibraryFilter
 import ua.nichnyk.listen.data.LibraryRepository
+import ua.nichnyk.listen.data.MissingFiles
 import ua.nichnyk.listen.data.PendingRename
 import ua.nichnyk.listen.data.ShelfViewMode
 import ua.nichnyk.listen.data.AddLibraryRootResult
@@ -46,6 +48,9 @@ import ua.nichnyk.listen.playback.withoutPosition
 import ua.nichnyk.listen.AppLog
 import ua.nichnyk.listen.launchSafely
 import ua.nichnyk.listen.playback.PlayerManager
+
+/** Скільки скан доступності файлів лишається чинним без повторного обходу. */
+private const val MISSING_SCAN_TTL_MS = 60_000L
 
 class LibraryViewModel(
     private val app: Application,
@@ -101,7 +106,10 @@ class LibraryViewModel(
      * файла: достатньо було відкрити полицю з цим фільтром, щоб він мовчки
      * перемкнувся на «усі».
      */
-    private data class MissingScan(val ids: Set<String> = emptySet(), val scanned: Boolean = false)
+    private data class MissingScan(
+        val counts: Map<String, MissingFiles> = emptyMap(),
+        val scanned: Boolean = false,
+    )
 
     /**
      * Книги, чиї файли зараз не відкриваються.
@@ -117,23 +125,71 @@ class LibraryViewModel(
      * фонового відтворення. Збирач, який лишав його гарячим усупереч цьому
      * коментарю, тепер живе рівно стільки, скільки відкрита полиця, — див. init.
      */
+    /**
+     * Останній скан і склад полиці, на якому його зроблено.
+     *
+     * `stateIn(WhileSubscribed)` піднімає весь ланцюг наново щоразу, коли на
+     * полицю повертаються після пʼяти секунд відсутності, — а це звичайний шлях
+     * «відкрив книгу, послухав, повернувся». На полиці зі 100 книг кожне таке
+     * повернення коштувало повного обходу 1398 файлів (близько секунди), і весь
+     * цей час позначки зниклих файлів були відсутні, хоча щойно показувалися.
+     *
+     * Памʼять коротка навмисно: скан і існує, щоб помічати файли, зниклі поза
+     * застосунком. За хвилину така зміна ще встигне проявитися, а десяток
+     * переходів між книгою й полицею — уже ні.
+     */
+    private class CachedScan(
+        val signature: List<Pair<String, List<String>>>,
+        val result: MissingScan,
+        val atMs: Long,
+    )
+
+    @Volatile
+    private var lastScan: CachedScan? = null
+
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     private val missingScan: StateFlow<MissingScan> = books
         .map { list -> list.map { it.book.id to it.chapters.map { ch -> ch.uri }.distinct() } }
         .distinctUntilChanged()
         .mapLatest { shelf ->
-            MissingScan(
-                ids = shelf.mapNotNullTo(mutableSetOf<String>()) { (id, uris) ->
-                    id.takeIf { uris.any { uri -> !repo.isAudioAccessible(uri) } }
-                },
-                scanned = true,
+            // Рахуємо, скільки саме файлів зникло, а не «чи зник хоч один». Різниця
+            // видима: «немає 3 з 20» лікується долиттям файлів, «немає 20 з 20» —
+            // перепривʼязкою теки, і на полиці ці випадки досі виглядали однаково.
+            val cached = lastScan
+            if (cached != null &&
+                cached.signature == shelf &&
+                System.currentTimeMillis() - cached.atMs < MISSING_SCAN_TTL_MS
+            ) {
+                return@mapLatest cached.result
+            }
+            val started = System.currentTimeMillis()
+            // Один паралельний прохід по всій полиці, а не книга за книгою: так
+            // перевірки різних книг ідуть одночасно, а URI, спільний для кількох,
+            // перевіряється один раз.
+            val gone = repo.inaccessibleUris(shelf.flatMap { it.second })
+            val counts = mutableMapOf<String, MissingFiles>()
+            for ((id, uris) in shelf) {
+                val missing = uris.count { it in gone }
+                if (missing > 0) counts[id] = MissingFiles(missing = missing, total = uris.size)
+            }
+            AppLog.d(
+                "missingScan",
+                "${shelf.size} книг, ${shelf.sumOf { it.second.size }} файлів за " +
+                    "${System.currentTimeMillis() - started} мс",
             )
+            MissingScan(counts = counts, scanned = true)
+                .also { lastScan = CachedScan(shelf, it, System.currentTimeMillis()) }
         }
         .flowOn(Dispatchers.IO)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), MissingScan())
 
+    /** Скільки файлів книги не відкривається — і зі скількох. */
+    val missingFileCounts: StateFlow<Map<String, MissingFiles>> = missingScan
+        .map { it.counts }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+
     val missingFilesBooks: StateFlow<Set<String>> = missingScan
-        .map { it.ids }
+        .map { it.counts.keys }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
 
     private val _busy = MutableStateFlow(false)
@@ -167,7 +223,7 @@ class LibraryViewModel(
                     launch { dropStaleFilters() }
                     launch {
                         missingScan.collect { scan ->
-                            if (scan.scanned && scan.ids.isEmpty() &&
+                            if (scan.scanned && scan.counts.isEmpty() &&
                                 _filter.value == LibraryFilter.Unavailable
                             ) {
                                 _filter.value = LibraryFilter.All
@@ -318,7 +374,7 @@ class LibraryViewModel(
             player.batchAddToQueue(items)
             launchSafely("LibraryViewModel.batchAddToQueue") {
                 _messages.send(
-                    app.resources.getQuantityString(R.plurals.batch_added_to_queue, items.size, items.size),
+                    app.forAppLocale().resources.getQuantityString(R.plurals.batch_added_to_queue, items.size, items.size),
                 )
             }
         }
@@ -385,14 +441,14 @@ class LibraryViewModel(
                 if (rootList.isEmpty()) {
                     _newBookCandidates.value = emptyList()
                     if (notifyIfEmpty) {
-                        _messages.send(app.getString(R.string.library_roots_empty_hint))
+                        _messages.send(app.forAppLocale().getString(R.string.library_roots_empty_hint))
                     }
                     return@launch
                 }
                 if (!repo.anyLibraryRootGranted(rootList)) {
                     _newBookCandidates.value = emptyList()
                     if (notifyIfEmpty) {
-                        _messages.send(app.getString(R.string.library_roots_access_lost))
+                        _messages.send(app.forAppLocale().getString(R.string.library_roots_access_lost))
                     }
                     return@launch
                 }
@@ -404,7 +460,7 @@ class LibraryViewModel(
                     .getOrDefault(emptyList())
                 _newBookCandidates.value = found
                 if (notifyIfEmpty && found.isEmpty()) {
-                    _messages.send(app.getString(R.string.scan_no_new_books))
+                    _messages.send(app.forAppLocale().getString(R.string.scan_no_new_books))
                 }
             } finally {
                 _libraryRefreshing.value = false
@@ -451,7 +507,7 @@ class LibraryViewModel(
     fun addToQueue(book: BookWithChapters) {
         player.addToQueue(book)
         launchSafely("LibraryViewModel.addToQueue") {
-            _messages.send(app.getString(R.string.added_to_queue, book.book.title))
+            _messages.send(app.forAppLocale().getString(R.string.added_to_queue, book.book.title))
         }
     }
 
@@ -470,7 +526,7 @@ class LibraryViewModel(
                     // раніше йшов просто в снекбар — ще й під заголовком «Не
                     // вдалося відтворити».
                     AppLog.w("LibraryViewModel.delete", e)
-                    _messages.send(app.getString(R.string.delete_failed))
+                    _messages.send(app.forAppLocale().getString(R.string.delete_failed))
                 }
         }
     }
@@ -484,11 +540,11 @@ class LibraryViewModel(
         val added = outcome.imported.size
         val skipped = outcome.duplicates.size
         return when {
-            skipped == 0 -> app.resources.getQuantityString(R.plurals.import_added, added, added)
-            added == 0 -> app.getString(R.string.import_duplicate, outcome.duplicates.first())
-            else -> app.getString(
+            skipped == 0 -> app.forAppLocale().resources.getQuantityString(R.plurals.import_added, added, added)
+            added == 0 -> app.forAppLocale().getString(R.string.import_duplicate, outcome.duplicates.first())
+            else -> app.forAppLocale().getString(
                 R.string.import_added_with_skipped,
-                app.resources.getQuantityString(R.plurals.import_added, added, added),
+                app.forAppLocale().resources.getQuantityString(R.plurals.import_added, added, added),
                 skipped,
             )
         }
@@ -511,13 +567,13 @@ class LibraryViewModel(
                     _messages.send(describeOutcome(outcome))
                 }
             } catch (e: CancellationException) {
-                if (userCancelledImport) _messages.trySend(app.getString(R.string.import_cancelled))
+                if (userCancelledImport) _messages.trySend(app.forAppLocale().getString(R.string.import_cancelled))
                 throw e
             } catch (e: DuplicateBookException) {
-                _messages.send(app.getString(R.string.import_duplicate, e.existingTitle))
+                _messages.send(app.forAppLocale().getString(R.string.import_duplicate, e.existingTitle))
             } catch (e: Exception) {
                 AppLog.w("LibraryViewModel.import", e)
-                _messages.send(app.getString(R.string.import_failed))
+                _messages.send(app.forAppLocale().getString(R.string.import_failed))
             } finally {
                 _busy.value = false
                 _importProgress.value = ImportProgress()
@@ -636,7 +692,23 @@ class SettingsViewModel(
     val billing: ua.nichnyk.listen.billing.ProEntitlementManager,
 ) : ViewModel() {
     val settings = prefs.settings.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ua.nichnyk.listen.data.UserSettings())
-    val isPro = billing.isPro
+
+    /**
+     * Межа Freemium, а не сирий стан біллінгу — те саме джерело, що в
+     * [BookViewModel] і на плеєрі.
+     *
+     * Раніше тут стояв `billing.isPro`, і екран розходився з рештою застосунку
+     * двічі. У debug обхід Pro (`UserPrefs.DEBUG_PRO`) до Play не доходить за
+     * визначенням, тож платні тумблери лишалися замкненими саме там, де їх
+     * вмикають, хоча на плеєрі й екрані книги вже відкривалися. У release перша
+     * емісія `billing.isPro` — це «поки не знаємо» у вигляді false, і власник Pro
+     * бачив замкнені тумблери, доки Play не відповість; нижче в цьому ж класі
+     * стоїть коментар, чому в prefs пишеться `resolvedIsPro`, — тут та сама
+     * причина, але її не врахували.
+     */
+    val isPro = settings
+        .map { it.isPro }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
     val formattedPrice = billing.formattedPrice
 
     /**
@@ -862,15 +934,15 @@ class BookDetailViewModel(
             try {
                 val count = repo.appendUrisToBook(bookId, uris)
                 val msg = if (count > 0) {
-                    app.resources.getQuantityString(R.plurals.append_added, count, count)
+                    app.forAppLocale().resources.getQuantityString(R.plurals.append_added, count, count)
                 } else {
-                    app.getString(R.string.append_empty)
+                    app.forAppLocale().getString(R.string.append_empty)
                 }
                 _messages.send(msg)
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 AppLog.w("BookDetailViewModel.appendUris", e)
-                _messages.send(app.getString(R.string.import_failed))
+                _messages.send(app.forAppLocale().getString(R.string.import_failed))
             } finally {
                 _appending.value = false
             }
@@ -884,15 +956,15 @@ class BookDetailViewModel(
             try {
                 val count = repo.appendTreeToBook(bookId, treeUri)
                 val msg = if (count > 0) {
-                    app.resources.getQuantityString(R.plurals.append_added, count, count)
+                    app.forAppLocale().resources.getQuantityString(R.plurals.append_added, count, count)
                 } else {
-                    app.getString(R.string.append_empty)
+                    app.forAppLocale().getString(R.string.append_empty)
                 }
                 _messages.send(msg)
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 AppLog.w("BookDetailViewModel.appendTree", e)
-                _messages.send(app.getString(R.string.import_failed))
+                _messages.send(app.forAppLocale().getString(R.string.import_failed))
             } finally {
                 _appending.value = false
             }
@@ -921,7 +993,7 @@ class BookDetailViewModel(
                 _newFileUris.value = found.map { it.uri.toUri() }
                 _newFilesCount.value = found.size
                 if (notifyIfEmpty && found.isEmpty()) {
-                    _messages.send(app.getString(R.string.scan_no_new_files))
+                    _messages.send(app.forAppLocale().getString(R.string.scan_no_new_files))
                 }
             } finally {
                 _refreshing.value = false
@@ -950,9 +1022,9 @@ class BookDetailViewModel(
             try {
                 val result = runCatching { repo.relinkBook(bookId, treeUri) }.getOrNull()
                 val text = when {
-                    result == null || result.isEmpty -> app.getString(R.string.relink_failed)
-                    result.isComplete -> app.getString(R.string.relink_done)
-                    else -> app.getString(R.string.relink_partial, result.matched, result.total)
+                    result == null || result.isEmpty -> app.forAppLocale().getString(R.string.relink_failed)
+                    result.isComplete -> app.forAppLocale().getString(R.string.relink_done)
+                    else -> app.forAppLocale().getString(R.string.relink_partial, result.matched, result.total)
                 }
                 _messages.send(text)
                 val uris = book.value?.chapters?.map { it.uri }?.distinct().orEmpty()
@@ -981,7 +1053,7 @@ class BookDetailViewModel(
         val item = book.value ?: return
         player.addToQueue(item)
         viewModelScope.launch {
-            _messages.send(app.getString(R.string.added_to_queue, item.book.title))
+            _messages.send(app.forAppLocale().getString(R.string.added_to_queue, item.book.title))
         }
     }
 
@@ -1038,7 +1110,7 @@ class BookDetailViewModel(
                     if (e is CancellationException) throw e
                     // e.toString() тут показував користувачу назву класу винятку.
                     AppLog.w("BookDetailViewModel.deleteBook", e)
-                    _messages.send(app.getString(R.string.delete_failed))
+                    _messages.send(app.forAppLocale().getString(R.string.delete_failed))
                 }
         }
     }
@@ -1082,7 +1154,7 @@ class BookmarksViewModel(
         viewModelScope.launch {
             val book = repo.getBook(bookId)
             if (book == null) {
-                _messages.send(app.getString(R.string.book_missing_title))
+                _messages.send(app.forAppLocale().getString(R.string.book_missing_title))
                 return@launch
             }
             runCatching { player.playBookmark(book, chapterId, position) }

@@ -578,6 +578,81 @@ class MigrationTest {
         }
     }
 
+    /**
+     * Найдовший шлях, який узагалі можливий у користувача: версія 1 -> поточна.
+     *
+     * Решта тестів перевіряє окремі сходинки або доходить до проміжної версії.
+     * Але оновлюється не сходинка, а людина, яка поставила перший реліз і
+     * повернулася через рік: у неї всі одинадцять міграцій виконуються поспіль в
+     * одній транзакції, і зламати полицю може саме їхнє поєднання — наприклад,
+     * колонка, яку пізніша міграція чекає з типом, що його змінила раніша.
+     *
+     * Перевіряємо не лише те, що база відкрилася, а що дані дійшли: назва,
+     * позиція, закладка й розділ — усе, чим людина дорожить.
+     */
+    @Test
+    fun migrate1ToCurrent_keepsEverythingTheUserCaresAbout() {
+        helper.createDatabase(dbName, 1).use { db ->
+            db.execSQL(
+                """
+                INSERT INTO books
+                (id, title, author, coverPath, addedAt, lastPlayedAt, durationMs, positionMs,
+                 currentChapterIndex, playbackSpeed, completed)
+                VALUES ('b1', 'Лісова пісня', 'Леся Українка', NULL, 1000, 2000, 180000, 4000, 0, 1.5, 0)
+                """.trimIndent(),
+            )
+            db.execSQL(
+                """
+                INSERT INTO chapters (id, bookId, "index", title, uri, durationMs)
+                VALUES ('c1', 'b1', 0, 'Дія перша', 'file:///a.mp3', 180000)
+                """.trimIndent(),
+            )
+            db.execSQL(
+                """
+                INSERT INTO bookmarks
+                (id, bookId, chapterId, chapterTitle, positionMs, note, createdAt)
+                VALUES ('m1', 'b1', 'c1', 'Дія перша', 45000, 'Той, хто греблі рве', 3000)
+                """.trimIndent(),
+            )
+        }
+
+        helper.runMigrationsAndValidate(dbName, ListenDatabase.VERSION, true, *allMigrations())
+
+        val db = openMigratedDatabase()
+        try {
+            db.query(
+                "SELECT title, author, positionMs, playbackSpeed, completed FROM books WHERE id = 'b1'",
+            ).use {
+                assertTrue("книга не пережила повний ланцюг міграцій", it.moveToFirst())
+                assertEquals("Лісова пісня", it.getString(0))
+                assertEquals("Леся Українка", it.getString(1))
+                assertEquals(4000L, it.getLong(2))
+                assertEquals(1.5f, it.getFloat(3), 0.001f)
+                assertEquals(0, it.getInt(4))
+            }
+            db.query("SELECT title, uri FROM chapters WHERE id = 'c1'").use {
+                assertTrue("розділ не пережив повний ланцюг", it.moveToFirst())
+                assertEquals("Дія перша", it.getString(0))
+                assertEquals("file:///a.mp3", it.getString(1))
+            }
+            db.query("SELECT note, positionMs FROM bookmarks WHERE id = 'm1'").use {
+                assertTrue("закладка не пережила повний ланцюг", it.moveToFirst())
+                assertEquals("Той, хто греблі рве", it.getString(0))
+                assertEquals(45000L, it.getLong(1))
+            }
+            // Колонки, додані найпізнішими міграціями, мають бути на місці й порожні.
+            db.query("SELECT renamedAt, sourceTreeUri, sourceFolderDocId FROM books WHERE id = 'b1'").use {
+                assertTrue(it.moveToFirst())
+                assertEquals(0L, it.getLong(0))
+                assertTrue("sourceTreeUri має лишитися порожнім", it.isNull(1))
+                assertTrue("sourceFolderDocId має лишитися порожнім", it.isNull(2))
+            }
+            assertEmptyNewTables(db)
+        } finally {
+            db.close()
+        }
+    }
+
     private fun assertEmptyNewTables(db: androidx.sqlite.db.SupportSQLiteDatabase) {
         for (table in listOf("book_tags", "listening_sessions", "queue_items", "book_characters")) {
             db.query("SELECT COUNT(*) FROM $table").use {

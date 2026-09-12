@@ -122,6 +122,11 @@ fun SettingsScreen(
     val libraryRootAdded = stringResource(R.string.library_roots_added)
     val libraryRootDuplicate = stringResource(R.string.library_roots_duplicate)
     val libraryRootPermissionFailed = stringResource(R.string.library_roots_permission_failed)
+    val libraryRootLimit = stringResource(R.string.library_roots_limit, UserPrefs.MAX_LIBRARY_ROOTS)
+    // Рядки для снекбарів беремо тут, а не з `context` у лямбді: composable
+    // читає ресурс спостережувано й перемалюється, коли мова зміниться;
+    // `context.getString` усередині обробника цього не вміє.
+    val filePickerUnavailable = stringResource(R.string.file_picker_unavailable)
     val pickLibraryRoot = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         vm.addLibraryRoot(uri) { result ->
@@ -131,7 +136,7 @@ fun SettingsScreen(
                         AddLibraryRootResult.ADDED -> libraryRootAdded
                         AddLibraryRootResult.DUPLICATE -> libraryRootDuplicate
                         AddLibraryRootResult.LIMIT ->
-                            context.getString(R.string.library_roots_limit, UserPrefs.MAX_LIBRARY_ROOTS)
+                            libraryRootLimit
                         AddLibraryRootResult.PERMISSION_FAILED -> libraryRootPermissionFailed
                     },
                 )
@@ -526,7 +531,7 @@ fun SettingsScreen(
                     runCatching { pickLibraryRoot.launch(null) }
                         .onFailure {
                             scope.launch {
-                                snack.showSnackbar(context.getString(R.string.file_picker_unavailable))
+                                snack.showSnackbar(filePickerUnavailable)
                             }
                         }
                 },
@@ -783,7 +788,14 @@ fun SettingsScreen(
         }
 
         if (s.webDavLastSyncTime > 0L) {
-            val syncFmt = java.text.SimpleDateFormat("d MMM, HH:mm", java.util.Locale.getDefault())
+            // LocalLocale, а не Locale.getDefault(): друге не є спостережуваним
+            // станом, тож дата лишалася б відформатованою старою мовою, доки
+            // екран не перестворять. Мова тут перемикається на сусідньому
+            // екрані налаштувань, тобто випадок не гіпотетичний.
+            val syncFmt = java.text.SimpleDateFormat(
+                "d MMM, HH:mm",
+                androidx.compose.ui.platform.LocalLocale.current.platformLocale,
+            )
             Text(
                 stringResource(R.string.webdav_last_sync, syncFmt.format(java.util.Date(s.webDavLastSyncTime))),
                 style = MaterialTheme.typography.labelMedium,
