@@ -60,6 +60,8 @@ import java.util.Date
 fun BookmarksScreen(
     vm: BookmarksViewModel,
     onPlayed: () -> Unit,
+    // null, коли нічого не завантажено: кнопка вела б у порожній плеєр.
+    onOpenPlayer: (() -> Unit)? = null,
 ) {
     val allItems by vm.items.collectAsStateWithLifecycle()
     val items by vm.filteredItems.collectAsStateWithLifecycle()
@@ -89,6 +91,12 @@ fun BookmarksScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodyMedium,
             )
+            if (onOpenPlayer != null) {
+                Spacer(Modifier.height(Spacing.xl))
+                androidx.compose.material3.Button(onClick = onOpenPlayer) {
+                    Text(stringResource(R.string.bookmarks_open_player))
+                }
+            }
         }
         return
     }
@@ -142,7 +150,7 @@ fun BookmarksScreen(
                     trailingIcon = {
                         if (query.isNotBlank()) {
                             IconButton(onClick = { vm.setQuery("") }) {
-                                Icon(Icons.Outlined.Close, contentDescription = null)
+                                Icon(Icons.Outlined.Close, contentDescription = stringResource(R.string.clear_search_text))
                             }
                         }
                     },

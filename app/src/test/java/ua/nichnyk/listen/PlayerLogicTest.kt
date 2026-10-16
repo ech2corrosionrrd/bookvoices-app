@@ -41,6 +41,24 @@ class PlayerLogicTest {
     }
 
     @Test
+    fun seekBackBeforeStartTakesTheRestOfTheStepFromTheEndOfPrevious() {
+        // 5 с у главі, крок 15 с: лишається 10 с з кінця попередньої (10 хв).
+        assertEquals(
+            SeekAction.ToPrevious(590_000L),
+            seekTarget(5_000L, 600_000L, -15_000L, hasPrevious = true, hasNext = true, previousDurationMs = 600_000L),
+        )
+    }
+
+    @Test
+    fun seekBackIntoShortPreviousClampsToItsStart() {
+        // Попередня глава коротша за залишок кроку — не виходимо за її початок.
+        assertEquals(
+            SeekAction.ToPrevious(0L),
+            seekTarget(0L, 600_000L, -15_000L, hasPrevious = true, hasNext = true, previousDurationMs = 4_000L),
+        )
+    }
+
+    @Test
     fun seekBackInFirstChapterClampsToZero() {
         // Першої глави немає куди відмотувати — впираємось у нуль, а не в -10 с.
         assertEquals(

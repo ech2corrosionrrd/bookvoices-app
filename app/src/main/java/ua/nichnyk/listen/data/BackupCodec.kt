@@ -234,6 +234,10 @@ object BackupCodec {
      * Книга без обов'язкових полів (id, title) пропускається разом зі своїми розділами,
      * а не валить увесь імпорт: половина відновленої полиці краща за нуль.
      */
+    /** Швидкість із файла: нескінченна, NaN чи недодатна — це 1×; решта в межах, які плеєр знає. */
+    internal fun sanitizeSpeed(raw: Double): Float =
+        if (raw.isNaN() || raw.isInfinite() || raw <= 0.0) 1f else raw.coerceIn(0.25, 4.0).toFloat()
+
     fun decode(json: String, fallbacks: Fallbacks, now: Long = System.currentTimeMillis()): Payload {
         val root = JSONObject(json)
         val booksArray = root.getJSONArray("books")
@@ -253,10 +257,12 @@ object BackupCodec {
                 coverPath = if (bObj.isNull("coverPath")) null else bObj.optString("coverPath").ifBlank { null },
                 addedAt = bObj.optLong("addedAt", now),
                 lastPlayedAt = if (bObj.isNull("lastPlayedAt")) null else bObj.optLong("lastPlayedAt"),
-                durationMs = bObj.optLong("durationMs", 0L),
-                positionMs = bObj.optLong("positionMs", 0L),
-                currentChapterIndex = bObj.optInt("currentChapterIndex", 0),
-                playbackSpeed = bObj.optDouble("playbackSpeed", 1.0).toFloat(),
+                // Значення з файла — не довірені: від'ємна позиція, швидкість 0 чи NaN у базі
+                // зламали б плеєр, хоч сам файл «валідний JSON». Тому межі, а не сліпе читання.
+                durationMs = bObj.optLong("durationMs", 0L).coerceAtLeast(0L),
+                positionMs = bObj.optLong("positionMs", 0L).coerceAtLeast(0L),
+                currentChapterIndex = bObj.optInt("currentChapterIndex", 0).coerceAtLeast(0),
+                playbackSpeed = sanitizeSpeed(bObj.optDouble("playbackSpeed", 1.0)),
                 completed = bObj.optBoolean("completed", false),
                 pinned = bObj.optBoolean("pinned", false),
                 series = if (bObj.isNull("series")) null else bObj.optString("series").trim().ifBlank { null },
@@ -280,9 +286,9 @@ object BackupCodec {
                     index = cObj.optInt("index", j),
                     title = cObj.optString("title").ifBlank { fallbacks.chapterTitle(j + 1) },
                     uri = uri,
-                    durationMs = cObj.optLong("durationMs", 0L),
-                    startMs = cObj.optLong("startMs", 0L),
-                    endMs = cObj.optLong("endMs", 0L),
+                    durationMs = cObj.optLong("durationMs", 0L).coerceAtLeast(0L),
+                    startMs = cObj.optLong("startMs", 0L).coerceAtLeast(0L),
+                    endMs = cObj.optLong("endMs", 0L).coerceAtLeast(0L),
                 )
             }
         }

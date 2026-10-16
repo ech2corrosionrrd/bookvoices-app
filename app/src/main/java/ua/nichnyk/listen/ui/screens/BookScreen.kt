@@ -9,6 +9,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -71,13 +73,15 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.widthIn
 import ua.nichnyk.listen.R
 import ua.nichnyk.listen.data.formatClock
 import ua.nichnyk.listen.data.progress
 import ua.nichnyk.listen.ui.components.BookCover
 import kotlin.math.roundToInt
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun BookScreen(
     vm: BookDetailViewModel,
@@ -196,7 +200,7 @@ fun BookScreen(
                         )
                     }
                     IconButton(onClick = { appendSheetOpen = true }, enabled = !appending) {
-                        Icon(Icons.Outlined.AddCircleOutline, contentDescription = stringResource(R.string.append_files))
+                        Icon(Icons.Outlined.LibraryAdd, contentDescription = stringResource(R.string.append_files))
                     }
                     IconButton(onClick = { renameOpen = true }) {
                         Icon(Icons.Outlined.Edit, contentDescription = stringResource(R.string.rename_dialog_title))
@@ -214,9 +218,11 @@ fun BookScreen(
             isRefreshing = refreshing,
             onRefresh = { vm.scanSourceTree(notifyIfEmpty = true) },
             modifier = Modifier.fillMaxSize().padding(padding),
+            contentAlignment = Alignment.TopCenter,
         ) {
         LazyColumn(
-            Modifier.fillMaxSize().padding(horizontal = Spacing.xl),
+            // На планшеті кнопки й розділи не розтягуються на весь екран.
+            Modifier.fillMaxHeight().widthIn(max = 720.dp).padding(horizontal = Spacing.xl),
             verticalArrangement = Arrangement.spacedBy(Spacing.xxs),
         ) {
             item {
@@ -320,9 +326,12 @@ fun BookScreen(
                     )
                 }
                 Spacer(Modifier.height(Spacing.l))
-                Row(
+                // FlowRow, а не Row: при великому шрифті дві кнопки вже не вміщаються поруч, і
+                // Row ламав слова всередині («Sta / rt»). Тут друга кнопка переходить на новий рядок.
+                FlowRow(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(Spacing.s),
+                    verticalArrangement = Arrangement.spacedBy(Spacing.s),
                 ) {
                     Button(
                         onClick = { vm.play(onStarted = onOpenPlayer) },
@@ -338,6 +347,7 @@ fun BookScreen(
                     }
                     androidx.compose.material3.OutlinedButton(
                         onClick = { vm.addToQueue() },
+                        modifier = Modifier.weight(1f),
                     ) {
                         Icon(Icons.Outlined.AddCircleOutline, contentDescription = null)
                         Spacer(Modifier.width(Spacing.xxs))
@@ -345,9 +355,10 @@ fun BookScreen(
                     }
                 }
                 Spacer(Modifier.height(Spacing.s))
-                Row(
+                FlowRow(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(Spacing.s),
+                    verticalArrangement = Arrangement.spacedBy(Spacing.s),
                 ) {
                     androidx.compose.material3.OutlinedButton(
                         // Не `enabled = isPro`: вимкнена кнопка мовчить, і користувач

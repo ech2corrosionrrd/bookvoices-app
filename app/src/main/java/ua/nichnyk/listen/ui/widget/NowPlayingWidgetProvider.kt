@@ -19,9 +19,18 @@ class NowPlayingWidgetProvider : AppWidgetProvider() {
     override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
         val app = context.applicationContext as? ListenApp
         val state = app?.container?.player?.state?.value ?: PlayerUiState()
-        for (appWidgetId in appWidgetIds) {
-            updateAppWidget(context, appWidgetManager, appWidgetId, state)
-        }
+        // onUpdate іде на головному потоці, а buildViews декодує обкладинку з диска (StrictMode
+        // показав саме цей читання диска). goAsync тримає приймач живим, поки працює фоновий потік.
+        val pending = goAsync()
+        Thread({
+            try {
+                for (appWidgetId in appWidgetIds) {
+                    updateAppWidget(context, appWidgetManager, appWidgetId, state)
+                }
+            } finally {
+                pending.finish()
+            }
+        }, "widget-update").start()
     }
 
     override fun onReceive(context: Context, intent: Intent) {

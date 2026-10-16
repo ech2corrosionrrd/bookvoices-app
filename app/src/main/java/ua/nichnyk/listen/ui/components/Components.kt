@@ -25,6 +25,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -55,6 +60,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -176,6 +182,9 @@ fun BookCover(path: String?, modifier: Modifier = Modifier, corner: Dp = 10.dp) 
     }
 }
 
+/** Наскільки кільце навколо обкладинки «дихає» під час відтворення. */
+private const val BREATHE_MAX = 1.045f
+
 @Composable
 fun LampCover(
     path: String?,
@@ -192,13 +201,15 @@ fun LampCover(
     val pulse = rememberInfiniteTransition(label = "lamp")
     val breathe by pulse.animateFloat(
         initialValue = 1f,
-        targetValue = if (playing) 1.045f else 1f,
+        targetValue = if (playing) BREATHE_MAX else 1f,
         animationSpec = infiniteRepeatable(tween(2600, easing = LinearEasing), RepeatMode.Reverse),
         label = "breathe",
     )
     Box(modifier, contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize()) {
-            val radius = size.minDimension / 2f * breathe
+            // «Дихання» росте до 1,045: базовий радіус беремо з запасом, інакше диск виходив за
+            // полотно й зрізався по прямокутнику (плоскі краї збоку й зверху).
+            val radius = size.minDimension / 2f / BREATHE_MAX * breathe
             drawCircle(Filament.copy(alpha = glow * 0.35f), radius = radius)
             drawCircle(Filament.copy(alpha = glow), radius = radius * 0.92f, style = Stroke(width = 10f))
             drawArc(
@@ -251,7 +262,11 @@ fun MiniPlayerBar(
                     trackColor = MaterialTheme.colorScheme.outlineVariant,
                 )
                 Row(
-                    Modifier.padding(horizontal = Spacing.m, vertical = Spacing.s),
+                    // Фон панелі лишається на всю ширину, а вміст не заходить під
+                    // бічну навігацію (ландшафт із кнопками) чи виріз екрана.
+                    Modifier
+                        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+                        .padding(horizontal = Spacing.m, vertical = Spacing.s),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     BookCover(book.book.coverPath, Modifier.size(48.dp), corner = 6.dp)
@@ -348,7 +363,9 @@ fun BookCard(
     isSelected: Boolean = false,
 ) {
     Column(
-        modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick),
+        modifier
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .alpha(if (missingFiles?.isWhole == true) GONE_BOOK_ALPHA else 1f),
     ) {
         Box {
             BookCover(
@@ -456,7 +473,24 @@ fun BookCard(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        if (missingFiles?.isWhole == true) GoneBookLabel()
     }
+}
+
+/**
+ * Книга, від якої не лишилося жодного файла, виглядає приглушеною й підписана
+ * словами: число в значку «20/20» читається як лічильник, а не як «слухати
+ * неможливо».
+ */
+private const val GONE_BOOK_ALPHA = 0.55f
+
+@Composable
+private fun GoneBookLabel() {
+    Text(
+        stringResource(R.string.book_files_gone_label),
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.error,
+    )
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -479,6 +513,7 @@ fun BookRow(
                 else Modifier
             )
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .alpha(if (missingFiles?.isWhole == true) GONE_BOOK_ALPHA else 1f)
             .padding(vertical = Spacing.s, horizontal = Spacing.xxs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -566,6 +601,7 @@ fun BookRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            if (missingFiles?.isWhole == true) GoneBookLabel()
             val p = item.progress()
             if (p > 0f) {
                 Spacer(Modifier.height(Spacing.xxs))
@@ -663,6 +699,13 @@ fun EmptyShelf(onAdd: () -> Unit, onDemo: () -> Unit) {
             stringResource(R.string.empty_shelf_subtitle),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(Spacing.m))
+        Text(
+            stringResource(R.string.empty_shelf_tip),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
         )
         Spacer(Modifier.height(Spacing.xl))
         androidx.compose.material3.Button(onClick = onAdd) { Text(stringResource(R.string.add_book)) }

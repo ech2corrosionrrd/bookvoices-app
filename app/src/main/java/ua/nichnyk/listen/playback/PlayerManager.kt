@@ -13,7 +13,6 @@ import androidx.media3.session.MediaController
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionToken
 import androidx.concurrent.futures.await
-import java.io.File
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -224,6 +223,22 @@ class PlayerManager(
 
     /** true лише після того, як користувач реально запустив відтворення поточної книги. */
     private var playbackStarted = false
+
+    /**
+     * Користувач щойно перемотав (слайдер, глава, «повернутися», крок). На паузі тикер
+     * мовчить, а перехід у паузу вже був, тож без цього перемотка жила лише в
+     * памʼяті: примусова зупинка застосунку верталася до старого місця.
+     */
+    private var userSeekAtMs = 0L
+
+    /**
+     * Свідомі перемотки відмічаємо часом, а не прапорцем: перемотка без події
+     * (на те саме місце) лишила б прапорець піднятим, і наступний автоматичний перехід
+     * між главами записав би «перемотку», якої ніхто не робив.
+     */
+    private fun markUserSeek() {
+        userSeekAtMs = android.os.SystemClock.elapsedRealtime()
+    }
     private var endedHandled = false
     private var lastPersistedPositionMs = -1L
     private var lastPersistedChapterIndex = -1
@@ -273,6 +288,15 @@ class PlayerManager(
         override fun onEvents(player: Player, events: Player.Events) {
             if (player.playbackState == Player.STATE_READY) errorSkipCount = 0
             publish(player)
+            if (userSeekAtMs != 0L) {
+                val fresh = android.os.SystemClock.elapsedRealtime() - userSeekAtMs <= USER_SEEK_WINDOW_MS
+                if (!fresh) {
+                    userSeekAtMs = 0L
+                } else if (events.contains(Player.EVENT_POSITION_DISCONTINUITY)) {
+                    userSeekAtMs = 0L
+                    persist(force = true, afterSeek = true)
+                }
+            }
             if (player.playbackState == Player.STATE_ENDED && !player.hasNextMediaItem()) {
                 // onEvents спрацьовує багато разів поспіль у стані ENDED — пишемо лише раз.
                 if (endedHandled) return
@@ -477,7 +501,12 @@ class PlayerManager(
             runCatching {
                 val c = requireController()
                 if (c.mediaItemCount == 0) {
-                    val book = _state.value.book ?: prefs.lastBookId.first()?.let { repo.getBook(it) }
+                    // З бази, а не зі знімка в стані: той зроблено при завантаженні книги, і
+                    // після годин відтворення позиція в ньому стара — старт звідти ще й
+                    // перезаписав би в базі свіжу.
+                    val stateBook = _state.value.book
+                    val id = stateBook?.book?.id ?: prefs.lastBookId.first()
+                    val book = id?.let { repo.getBook(it) } ?: stateBook
                     if (book != null) play(book)
                     return@runCatching
                 }
@@ -532,7 +561,7 @@ class PlayerManager(
      * Зупиняє відтворення й ховає міні-плеєр, якщо зараз грає саме ця книга.
      * Suspend: викликач (deleteBook) чекає stop/clear до стирання файлів.
      */
-    suspend fun clearIfCurrent(bookId: String) {
+    suspend fun clearIfCurrent(bookId: String, forgetLast: Boolean = true) {
         removeFromQueue(bookId)
         prepareMutex.withLock {
             withContext(Dispatchers.Main.immediate) {
@@ -540,7 +569,11 @@ class PlayerManager(
                 stopAndForgetLocked()
             }
         }
-        prefs.setLastBookId(null)
+        // Лише для цієї книги: сюди приходять і видалення, і доливання файлів, і
+        // перепривʼязка будь-якої книги, а не тільки тієї, що зараз у плеєрі.
+        // forgetLast = false — книга лишається на полиці (доливання, перепривʼязка): вона й
+        // далі «остання», і після перезапуску відновиться вже з новими файлами.
+        if (forgetLast && shouldForgetLastBook(prefs.lastBookId.first(), bookId)) prefs.setLastBookId(null)
     }
 
     /** Повна зупинка: відновлення бекапу замінює полицю, старий плеєр лишати небезпечно. */
@@ -600,6 +633,7 @@ class PlayerManager(
     fun jumpBack() {
         val target = _state.value.jumpBackTarget ?: return
         _state.update { it.copy(jumpBackTarget = null) }
+        markUserSeek()
         withLiveController { c ->
             if (target.chapterIndex in 0 until c.mediaItemCount) {
                 // Без c.play(): повернення до попереднього місця — це перемотка,
@@ -619,6 +653,7 @@ class PlayerManager(
         if (kotlin.math.abs(s.positionMs - positionMs) > 30_000L) {
             recordJumpBack(s.chapterIndex, s.positionMs)
         }
+        markUserSeek()
         withLiveController { it.seekTo(positionMs.coerceAtLeast(0L)) }
     }
 
@@ -627,6 +662,7 @@ class PlayerManager(
         if (s.chapterIndex != index || s.positionMs > 10_000L) {
             recordJumpBack(s.chapterIndex, s.positionMs)
         }
+        markUserSeek()
         withLiveController { c ->
             if (index in 0 until c.mediaItemCount) {
                 // Так само без c.play(): гортання списку глав на паузі не має
@@ -923,6 +959,27 @@ class PlayerManager(
     }
 
     /**
+     * Нічний таймер сну за розкладом: відтворення щойно почалося, ми в нічному вікні
+     * і ніхто не заводив таймер сам — заводимо хвилинний. Годинник береться стінний
+     * (вікно задане «за доби»), а сам відлік, як завжди, іде за відтворенням.
+     */
+    private fun maybeStartNightTimer() {
+        val s = settings
+        val now = java.util.Calendar.getInstance()
+        val nowMinute = now.get(java.util.Calendar.HOUR_OF_DAY) * 60 + now.get(java.util.Calendar.MINUTE)
+        if (shouldStartNightTimer(
+                enabled = s.nightTimerEnabled,
+                timerActive = _state.value.sleepMode != null,
+                nowMinute = nowMinute,
+                startMinute = s.nightTimerStartMinute,
+                endMinute = s.nightTimerEndMinute,
+            )
+        ) {
+            startSleep(s.nightTimerMinutes)
+        }
+    }
+
+    /**
      * Пільгове вікно після спрацювання таймера.
      *
      * Раніше акселерометр вимикався тієї ж миті, коли таймер ставив на паузу, — тобто
@@ -1180,7 +1237,7 @@ class PlayerManager(
                             .setArtist(book.book.author)
                             .setSubtitle(ch.title)
                             .setAlbumTitle(book.book.title)
-                            .setArtworkUri(book.book.coverPath?.let { File(it).toUri() })
+                            .setArtworkUri(CoverUris.artwork(app, book.book.coverPath))
                             .setIsPlayable(true)
                             .setMediaType(MediaMetadata.MEDIA_TYPE_AUDIO_BOOK_CHAPTER)
                             .build()
@@ -1200,9 +1257,7 @@ class PlayerManager(
             // Книга, яку ще жодного разу не вмикали і в якої швидкість стоїть
             // рівно 1.0, свою швидкість не «обирала» — їй іде значення з
             // налаштувань. У всіх інших випадках виграє швидкість книги.
-            val bookChoseSpeed = book.book.playbackSpeed > 0f &&
-                (book.book.lastPlayedAt != null || book.book.playbackSpeed != 1f)
-            val speed = if (bookChoseSpeed) book.book.playbackSpeed else settings.defaultSpeed
+            val speed = bookChosenSpeed(book.book.playbackSpeed, book.book.lastPlayedAt) ?: settings.defaultSpeed
             // Разом зі швидкістю, а не setPlaybackSpeed: інакше збережена висота
             // тону лишалася в стані UI, але до плеєра на новій книзі не доходила.
             c.playbackParameters = androidx.media3.common.PlaybackParameters(speed, settings.pitch)
@@ -1228,7 +1283,25 @@ class PlayerManager(
             if (autoPlay) c.play() else c.pause()
     }
 
-    private fun seekBy(delta: Long) = withLiveController { c ->
+    private fun seekBy(delta: Long) {
+        markUserSeek()
+        seekByNow(delta)
+    }
+
+    /** Довжина попередньої глави: з таймлайна плеєра, інакше з бази; 0 — невідома. */
+    private fun previousChapterDurationMs(c: MediaController): Long {
+        val prev = c.previousMediaItemIndex
+        if (prev < 0) return 0L
+        val fromTimeline = runCatching {
+            androidx.media3.common.Timeline.Window().also { c.currentTimeline.getWindow(prev, it) }.durationMs
+        }.getOrNull()
+        if (fromTimeline != null && fromTimeline != androidx.media3.common.C.TIME_UNSET && fromTimeline > 0L) {
+            return fromTimeline
+        }
+        return _state.value.book?.chapters?.getOrNull(prev)?.durationMs?.takeIf { it > 0L } ?: 0L
+    }
+
+    private fun seekByNow(delta: Long) = withLiveController { c ->
         // Саме рішення — у чистій seekTarget (див. SeekLogic.kt), тут лишається виконання.
         when (
             val action = seekTarget(
@@ -1237,9 +1310,11 @@ class PlayerManager(
                 deltaMs = delta,
                 hasPrevious = c.hasPreviousMediaItem(),
                 hasNext = c.hasNextMediaItem(),
+                previousDurationMs = previousChapterDurationMs(c),
             )
         ) {
             is SeekAction.To -> c.seekTo(action.positionMs)
+            is SeekAction.ToPrevious -> c.seekTo(c.previousMediaItemIndex, action.positionMs)
             SeekAction.PreviousChapter -> c.seekToPreviousMediaItem()
             SeekAction.NextChapter -> c.seekToNextMediaItem()
         }
@@ -1272,6 +1347,7 @@ class PlayerManager(
                     persist(force = true)
                     return@collectLatest
                 }
+                maybeStartNightTimer()
                 var n = 0
                 var lastTickMs = SystemClock.elapsedRealtime()
                 while (isActive) {
@@ -1383,10 +1459,11 @@ class PlayerManager(
         }
     }
 
-    private fun persist(force: Boolean = false) {
+    private fun persist(force: Boolean = false, afterSeek: Boolean = false) {
         // Книгу, яку лише підвантажили при старті додатка, не чіпаємо взагалі:
         // інакше вона вічно висіла б угорі полиці й у фільтрі «слухаю».
-        if (!playbackStarted) return
+        // Свідома перемотка — виняток: місце зберігаємо, але полицю не піднімаємо.
+        if (!playbackStarted && !afterSeek) return
         val s = _state.value
         val book = s.book ?: return
         val c = liveController() ?: return
@@ -1405,12 +1482,18 @@ class PlayerManager(
                     speed = s.speed,
                     // null = не чіпати позначку «завершено»: знімати її має лише реальний перезапуск книги.
                     completed = if (ended) true else null,
+                    // «Востаннє грали» — це про звук, а не про дотик до смужки: від нього рахується
+                    // розумний відкат після паузи. Перемотка на паузі місце зберігає, а час не чіпає.
+                    touchLastPlayed = playbackStarted && !afterSeek,
                 )
             }
         }
     }
 
     private companion object {
+        /** Скільки після дії користувача подія розриву позиції ще вважається наслідком його перемотки. */
+        const val USER_SEEK_WINDOW_MS = 3_000L
+
         /** Як часто скидати накопичену статистику прослуховування в БД. */
         const val LISTEN_FLUSH_MS = 30_000L
 

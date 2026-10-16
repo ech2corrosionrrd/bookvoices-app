@@ -10,6 +10,7 @@
     <string name="greeting_night">Dobrej nocy</string>
     <string name="search_placeholder">Tytuł lub autor</string>
     <string name="close_search">Zamknij wyszukiwanie</string>
+    <string name="clear_search_text">Wyczyść wyszukiwanie</string>
     <string name="filter_all">Wszystkie</string>
     <string name="filter_listening">Słuchane</string>
     <string name="filter_finished">Ukończone</string>
@@ -40,6 +41,7 @@
     <string name="delete_book_confirm">Usunąć książkę z półki?</string>
     <string name="empty_shelf_title">Półka jest pusta</string>
     <string name="empty_shelf_subtitle">Dodaj audiobooki z pamięci telefonu lub wypróbuj rozdział demonstracyjny</string>
+    <string name="empty_shelf_tip">Wskazówka: wybierz folder. Folder z plikami audio stanie się jedną książką, a folder z folderami – kilkoma. Nazwij go „Autor - Tytuł”, a autor zostanie uzupełniony automatycznie.</string>
     <string name="stats_week_title">CZAS W TYM TYGODNIU</string>
     <string name="stats_today_title">DZISIAJ</string>
     <string name="stats_read_title">PRZESŁUCHANO</string>
@@ -53,6 +55,8 @@
     <string name="bookmark_note_label">Notatka (opcjonalnie)</string>
     <string name="bookmark_saved">Zakładka zapisana</string>
     <string name="book_progress">Książka: %d%%</string>
+    <string name="book_progress_chapter">Rozdział %1$d z %2$d · Książka %3$d%%</string>
+    <string name="book_time_left">Zostało %1$s przy %2$s</string>
     <string name="play">Odtwórz</string>
     <string name="pause">Pauza</string>
     <string name="rewind_sec">Wstecz %d s</string>
@@ -64,6 +68,7 @@
     <string name="sleep_badge_chapter">Rozdz</string>
     <string name="speed_and_audio">Prędkość i dźwięk</string>
     <string name="current_speed">Bieżąca prędkość</string>
+    <string name="speed_saved_per_book">Zapisywana dla tej książki</string>
     <string name="quick_presets">Szybkie ustawienia</string>
     <string name="skip_silence">Pomijanie ciszy</string>
     <string name="skip_silence_desc">Skracanie przerw między słowami</string>
@@ -74,6 +79,7 @@
     <string name="edit_note">Edytuj notatkę</string>
     <string name="no_bookmarks">Brak zakładek</string>
     <string name="no_bookmarks_desc">Dodawaj zakładki w odtwarzaczu, aby wracać do ulubionych fragmentów.</string>
+    <string name="bookmarks_open_player">Otwórz odtwarzacz</string>
     <string name="settings_title">Ustawienia</string>
     <string name="settings_subtitle">Dostosuj aplikację do swoich potrzeb</string>
     <string name="section_appearance">Wygląd</string>
@@ -99,6 +105,12 @@
     <string name="fade_on_sleep_desc">Płynne ściszanie dźwięku przed pauzą</string>
     <string name="shake_sleep">Potrząśnij, aby przedłużyć</string>
     <string name="shake_sleep_desc">Potrząśnij telefonem, aby dodać +10 min do timera</string>
+    <string name="night_timer">Nocny wyłącznik czasowy</string>
+    <string name="night_timer_desc">Gdy włączysz odtwarzanie w wybranych godzinach, wyłącznik czasowy uruchomi się sam</string>
+    <string name="night_timer_from">Od</string>
+    <string name="night_timer_to">Do</string>
+    <string name="night_timer_length">Czas działania</string>
+    <string name="night_timer_minutes_format">%d min</string>
     <string name="section_audio">Silnik audio</string>
     <string name="default_speed">Domyślna prędkość</string>
     <string name="section_stats">Półka i Statystyki</string>
@@ -130,6 +142,7 @@
     <string name="about_app_desc">Audiobooki z pamięci telefonu. Postęp, rozdziały, zakładki, wyłącznik czasowy i odtwarzacz w powiadomieniach.</string>
 
     <string name="version_format">Wersja %s</string>
+    <string name="rate_app">Oceń BookVoices w Google Play</string>
     <string name="seconds_format">%d s</string>
     <string name="minutes_format">%d min</string>
     <string name="btn_start">Rozpocznij</string>
@@ -169,6 +182,8 @@
     <string name="demo_book_title">BookVoices. Wprowadzenie</string>
     <string name="demo_book_author">BookVoices</string>
     <string name="import_no_space">Za mało wolnego miejsca, aby skopiować plik</string>
+    <string name="import_zip_no_audio">Archiwum nie zawiera plików audio</string>
+    <string name="import_zip_unreadable">Nie udało się odczytać archiwum</string>
 
     <string name="unit_hours_short">godz.</string>
     <string name="unit_minutes_short">min</string>
@@ -176,11 +191,12 @@
     <string name="webdav_err_insecure">Wymagane połączenie HTTPS</string>
     <string name="webdav_err_auth">Nieprawidłowy login lub hasło</string>
     <string name="webdav_err_rate_limit">Zbyt wiele prób. Odczekaj kilka minut i spróbuj ponownie</string>
+    <string name="webdav_err_too_large">Plik na serwerze jest zbyt duży na kopię zapasową BookVoices</string>
     <string name="webdav_err_folder">Folder nie został znaleziony na serwerze</string>
     <string name="webdav_err_absent">Brak kopii zapasowej na serwerze</string>
     <string name="webdav_err_http">Serwer odpowiedział: HTTP %1$d %2$s</string>
     <string name="webdav_err_network">Nie udało się połączyć z serwerem</string>
-    <string name="webdav_auth_failed">Synchronizacja zatrzymana: serwer odrzucił dane logowania.</string>
+    <string name="webdav_auth_failed">Synchronizacja zatrzymana: sprawdź adres serwera lub dane logowania i dotknij Testuj.</string>
     <string name="webdav_save_btn">Zapisz</string>
     <string name="webdav_saved">Dane WebDAV zapisane</string>
     <string name="webdav_password_hint">Puste pole usuwa zapisane hasło</string>
@@ -218,6 +234,8 @@
     <string name="relink_done">Książka powiązana ponownie</string>
     <string name="relink_partial">Powiązano %1$d z %2$d plików</string>
     <string name="relink_failed">W tym folderze nie znaleziono plików tej książki</string>
+    <string name="book_files_gone_label">Brak plików</string>
+    <string name="book_files_gone_body">Plików tej książki już nie ma. Postęp i zakładki zostają, dopóki nie usuniesz książki z półki.</string>
 
     <plurals name="book_files_missing_count">
         <item quantity="one">Brakuje %1$d z %2$d pliku</item>
@@ -276,6 +294,7 @@
     <string name="file_picker_unavailable">Wybór plików jest niedostępny</string>
 
     <string name="queue_title">Kolejka odtwarzania</string>
+    <string name="player_action_queue">Kolejka</string>
     <string name="add_to_queue">Dodaj do kolejki</string>
     <string name="added_to_queue">Dodano do kolejki: %s</string>
     <string name="queue_empty">Kolejka jest pusta</string>
@@ -306,6 +325,7 @@
     <string name="smart_rewind_desc">Automatyczne cofanie o 5–30 s po dłuższej pauzie</string>
     <string name="mono_audio">Dźwięk mono</string>
     <string name="mono_audio_desc">Miksowanie stereo do mono do słuchania na jednej słuchawce</string>
+    <string name="headset_actions_summary">2×: %1$s · 3×: %2$s</string>
     <string name="headset_actions">Przyciski słuchawek</string>
     <string name="headset_actions_desc">Domyślnie przycisk słuchawek reaguje natychmiast na pauzę/odtwarzanie</string>
     <string name="headset_action_none">Brak akcji</string>
@@ -363,6 +383,8 @@
     <string name="export_catalog_total_duration">Całkowity czas: %s</string>
     <string name="auto_bookmark_bluetooth">Auto-zakładka przy rozłączeniu Bluetooth</string>
     <string name="auto_bookmark_bluetooth_desc">Automatycznie zapisuje zakładkę po odłączeniu słuchawek lub auta</string>
+    <string name="resume_on_reconnect">Wznów po ponownym podłączeniu słuchawek</string>
+    <string name="resume_on_reconnect_desc">Po krótkim rozłączeniu (do 15 minut) odtwarzanie wznowi się, gdy słuchawki lub samochód połączą się ponownie</string>
     <string name="bookmark_bluetooth_disconnected">Rozłączenie Bluetooth o %s</string>
     <string name="bookmark_headset_disconnected">Odłączenie słuchawek o %s</string>
     <string name="jump_back_to">Wróć do %s</string>
@@ -385,6 +407,7 @@
     <string name="pro_purchase_success">Dziękujemy! Licencja Pro aktywowana</string>
     <string name="pro_purchase_unavailable">Sklep Play jest teraz niedostępny — spróbuj później</string>
     <string name="pro_purchase_failed">Zakup nie został ukończony</string>
+    <string name="pro_purchase_pending">Płatność oczekuje — Pro włączy się po jej potwierdzeniu</string>
     <string name="characters_title">Postacie</string>
     <string name="characters_empty">Brak dodanych postaci</string>
     <string name="add_character">Dodaj postać</string>

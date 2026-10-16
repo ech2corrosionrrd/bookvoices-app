@@ -3,9 +3,7 @@ package ua.nichnyk.listen.data
 import android.util.Base64
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.io.BufferedReader
 import java.io.IOException
-import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.charset.StandardCharsets
@@ -38,18 +36,28 @@ sealed class WebDavError(val messageRes: Int) : Exception() {
      */
     data object TooManyRequests : WebDavError(R.string.webdav_err_rate_limit)
 
+    /**
+     * Відповідь більша за [WebDavClient.MAX_DOWNLOAD_BYTES]. Справжня копія — кілька сотень КБ навіть на тисячу книг;
+     * сервер, що віддає десятки МБ, або зламаний, або чужий, і вичитувати це в памʼять застосунку не можна.
+     * Повтор не допоможе, тож помилка постійна.
+     */
+    data object TooLarge : WebDavError(R.string.webdav_err_too_large)
+
     data class Http(val code: Int, val serverMessage: String) : WebDavError(R.string.webdav_err_http)
 
     data class Network(override val cause: Throwable) : WebDavError(R.string.webdav_err_network)
 
     /** true — помилку не виправить повтор запиту (потрібна дія користувача). */
     val isPermanent: Boolean
-        get() = this is Auth || this is InsecureUrl || this is FolderNotFound
+        get() = this is Auth || this is InsecureUrl || this is FolderNotFound || this is TooLarge
 }
 
 object WebDavClient {
 
     private const val DEFAULT_FILE = "bookvoices_sync.json"
+
+    /** Межа розміру файла синхронізації, який ми готові прочитати (байти). */
+    const val MAX_DOWNLOAD_BYTES = 32 * 1024 * 1024
 
     suspend fun testConnection(serverUrl: String, username: String, pass: String): Result<Unit> =
         io {
@@ -111,9 +119,32 @@ object WebDavClient {
                 else -> throw WebDavError.Http(code, message)
             }
         }
-        BufferedReader(InputStreamReader(connection.inputStream, StandardCharsets.UTF_8)).use {
-            it.readText()
-        }.also { connection.disconnect() }
+        // Відомий розмір понад межу відхиляємо ще до читання; невідомий (chunked) читаємо з лічильником.
+        val declared = connection.contentLengthLong
+        if (declared > MAX_DOWNLOAD_BYTES) {
+            connection.disconnect()
+            throw WebDavError.TooLarge
+        }
+        try {
+            readCapped(connection.inputStream, MAX_DOWNLOAD_BYTES)
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    /** Читає потік не більше [limit] байтів; більше — [WebDavError.TooLarge]. */
+    internal fun readCapped(input: java.io.InputStream, limit: Int): String {
+        val out = java.io.ByteArrayOutputStream()
+        val buf = ByteArray(16 * 1024)
+        input.use {
+            while (true) {
+                val n = it.read(buf)
+                if (n < 0) break
+                if (out.size() + n > limit) throw WebDavError.TooLarge
+                out.write(buf, 0, n)
+            }
+        }
+        return out.toString(StandardCharsets.UTF_8.name())
     }
 
     fun isAbsentBackup(error: Throwable?): Boolean = error is WebDavError.BackupAbsent

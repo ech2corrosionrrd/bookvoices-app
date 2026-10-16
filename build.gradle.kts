@@ -36,7 +36,7 @@ plugins {
  * це відкат версії. Тримає це в порядку крок «devVersion випереджає тег» у CI —
  * PR із простроченим числом туди не проходить.
  */
-val devVersion = "1.13.0-dev"
+val devVersion = "1.15.0-dev"
 
 /** «v1.2.0» → «1.2.0». Усе, що не схоже на тег версії, — null. */
 fun versionFromTag(tag: String?): String? = tag

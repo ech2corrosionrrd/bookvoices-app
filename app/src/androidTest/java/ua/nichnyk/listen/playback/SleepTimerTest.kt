@@ -6,6 +6,7 @@ import androidx.test.ext.junit.rules.ActivityScenarioRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.io.File
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.After
@@ -76,6 +77,7 @@ class SleepTimerTest {
 
     @After
     fun tearDown() = runBlocking {
+        runCatching { container.prefs.setNightTimerEnabled(false) }
         runCatching { player.cancelSleep() }
         runCatching { player.clearIfCurrent(bookId) }
         runCatching { container.db.library().deleteBook(bookId) }
@@ -193,6 +195,84 @@ class SleepTimerTest {
 
         assertEquals("таймер тікав, поки книга стояла", frozen, player.state.value.sleepRemainingMs)
         assertEquals("режим таймера скинувся на паузі", 1, player.state.value.sleepPresetMinutes)
+        Unit
+    }
+
+    // ---------- нічний таймер за розкладом ----------
+
+    private fun minuteOfDayNow(): Int {
+        val c = java.util.Calendar.getInstance()
+        return c.get(java.util.Calendar.HOUR_OF_DAY) * 60 + c.get(java.util.Calendar.MINUTE)
+    }
+
+    /** Вікно, що охоплює «зараз» (година до і година після), або таке, що точно його оминає. */
+    private suspend fun configureNightTimer(enabled: Boolean, aroundNow: Boolean, minutes: Int = 20) {
+        val now = minuteOfDayNow()
+        val day = 24 * 60
+        val prefs = container.prefs
+        prefs.setNightTimerStart(if (aroundNow) (now - 60 + day) % day else (now + 120) % day)
+        prefs.setNightTimerEnd(if (aroundNow) (now + 60) % day else (now + 180) % day)
+        prefs.setNightTimerMinutes(minutes)
+        prefs.setNightTimerEnabled(enabled)
+        // PlayerManager підхоплює налаштування окремою підпискою: чекаємо, поки значення дійде.
+        prefs.settings.first { it.nightTimerEnabled == enabled && it.nightTimerMinutes == minutes }
+        delay(500)
+    }
+
+    @Test
+    fun nightTimerStartsByItselfWhenPlaybackBeginsInsideTheWindow() = runBlocking {
+        configureNightTimer(enabled = true, aroundNow = true, minutes = 20)
+
+        startPlaying()
+
+        assertTrue("нічний таймер не завівся", await(10_000) { it.sleepPresetMinutes == 20 })
+        val remaining = player.state.value.sleepRemainingMs
+        assertNotNull(remaining)
+        assertTrue("залишок більший за 20 хв: $remaining", remaining!! <= 20 * 60_000L)
+        Unit
+    }
+
+    @Test
+    fun noNightTimerOutsideTheWindow() = runBlocking {
+        configureNightTimer(enabled = true, aroundNow = false)
+
+        startPlaying()
+        delay(2_000)
+
+        assertNull("таймер завівся поза вікном", player.state.value.sleepPresetMinutes)
+        assertNull(player.state.value.sleepRemainingMs)
+        Unit
+    }
+
+    @Test
+    fun noNightTimerWhenTheOptionIsOff() = runBlocking {
+        configureNightTimer(enabled = false, aroundNow = true)
+
+        startPlaying()
+        delay(2_000)
+
+        assertNull("таймер завівся при вимкненій опції", player.state.value.sleepPresetMinutes)
+        Unit
+    }
+
+    /**
+     * Таймер, який користувач завів сам, розклад не перезаписує. Заводимо його на паузі й
+     * вмикаємо відтворення: саме цей момент спрацьовує нічний хук.
+     */
+    @Test
+    fun nightTimerDoesNotOverrideATimerTheUserAlreadySet() = runBlocking {
+        configureNightTimer(enabled = false, aroundNow = true, minutes = 20)
+        startPlaying()
+        player.playPause()
+        assertTrue("плеєр не став на паузу", await(10_000) { !it.isPlaying })
+
+        configureNightTimer(enabled = true, aroundNow = true, minutes = 20)
+        player.startSleep(minutes = 7)
+        player.playPause()
+        assertTrue("відтворення не відновилось", await(10_000) { it.isPlaying })
+        delay(1_000)
+
+        assertEquals("розклад перезаписав таймер користувача", 7, player.state.value.sleepPresetMinutes)
         Unit
     }
 

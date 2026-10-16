@@ -97,6 +97,16 @@
         </provider>
 
         <!--
+          Обкладинки для Android Auto, шторки й екрана блокування. exported=true свідомо:
+          ці клієнти — інші процеси й читають artworkUri самі. Провайдер віддає лише файли
+          з filesDir/covers і лише на читання, див. CoverProvider.
+        -->
+        <provider
+            android:name=".playback.CoverProvider"
+            android:authorities="${applicationId}.covers"
+            android:exported="true" />
+
+        <!--
           exported=true обов'язковий: без нього сервіс не побачать системні медіаклієнти
           (шторка, екран блокування, Android Auto). Доступ обмежує не маніфест, а
           MediaLibrarySession.Callback.onConnect — див. isTrustedController у PlaybackService.

@@ -44,6 +44,7 @@ import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.KeyboardArrowUp
 import androidx.compose.material.icons.outlined.LibraryAdd
+import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.LibraryMusic
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.Search
@@ -83,7 +84,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -105,6 +108,20 @@ import ua.nichnyk.listen.ui.components.EmptyShelf
 import ua.nichnyk.listen.ui.components.MissingFilesBadge
 import ua.nichnyk.listen.ui.components.greetingLine
 import ua.nichnyk.listen.ui.components.listeningTimeText
+
+/**
+ * Чи малювати картку історії на полиці.
+ *
+ * З цифрами — коли є що показати. Без цифр — лише як підказка «тут є історія» для
+ * того, хто її ще жодного разу не відкривав; відкрив — картка без даних зникає, щоб
+ * не займати місце в тих, хто не слухає.
+ */
+internal fun showHistoryCard(
+    showStatsOnShelf: Boolean,
+    hasStats: Boolean,
+    hasBooks: Boolean,
+    historyOpened: Boolean,
+): Boolean = showStatsOnShelf && (hasStats || (hasBooks && !historyOpened))
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -143,6 +160,15 @@ fun LibraryScreen(
     var sortMenuOpen by remember { mutableStateOf(false) }
     var seriesTagSheet by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<BookWithChapters?>(null) }
+    var goneBookTarget by remember { mutableStateOf<BookWithChapters?>(null) }
+    // Книга, якій зараз обирають нову теку; rememberSaveable — бо вибір теки відкриває
+    // чужий екран, і активність за цей час може бути перестворена.
+    var relinkBookId by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
+    val pickRelinkTree = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        val id = relinkBookId
+        relinkBookId = null
+        if (uri != null && id != null) vm.relinkBook(id, uri)
+    }
     var pendingBatchDelete by remember { mutableStateOf(false) }
     var batchTagDialog by remember { mutableStateOf(false) }
     var bookMenuTarget by remember { mutableStateOf<BookWithChapters?>(null) }
@@ -243,7 +269,18 @@ fun LibraryScreen(
                             Icon(Icons.Outlined.Close, contentDescription = stringResource(R.string.close_search))
                         }
                     } else {
-                        Text("BookVoices", style = MaterialTheme.typography.displayMedium, modifier = Modifier.weight(1f))
+                        // Один рядок завжди: при великому шрифті назва стискається, а не ламається
+                        // посеред слова («BookV / oices»).
+                        Text(
+                            "BookVoices",
+                            style = MaterialTheme.typography.displayMedium,
+                            modifier = Modifier.weight(1f),
+                            maxLines = 1,
+                            autoSize = androidx.compose.foundation.text.TextAutoSize.StepBased(
+                                minFontSize = 10.sp,
+                                maxFontSize = MaterialTheme.typography.displayMedium.fontSize,
+                            ),
+                        )
                         IconButton(onClick = {
                             val nextMode = if (settings.shelfViewMode == ShelfViewMode.GRID) ShelfViewMode.LIST else ShelfViewMode.GRID
                             vm.setShelfViewMode(nextMode)
@@ -334,12 +371,17 @@ fun LibraryScreen(
                         LibraryFilter.Finished -> stringResource(R.string.filter_finished)
                         LibraryFilter.Unavailable -> stringResource(R.string.filter_unavailable)
                     }
-                    val enabled = item != LibraryFilter.Unavailable || missingFilesBooks.isNotEmpty()
+                    // Чип «Недоступні» з'являється, лише коли є що фільтрувати: мертвий
+                    // напівпрозорий чип нічого не казав і мовчки ігнорував тап. Вибраним
+                    // він лишається й порожнім — інакше фільтр, що діє, зник би з рядка
+                    // раніше, ніж скан дійде до першого файла.
+                    if (item == LibraryFilter.Unavailable && missingFilesBooks.isEmpty() && filter != item) {
+                        return@forEach
+                    }
                     FilterChip(
                         selected = filter == item,
-                        onClick = { if (enabled) vm.setFilter(item) },
+                        onClick = { vm.setFilter(item) },
                         label = { Text(label) },
-                        enabled = enabled,
                     )
                 }
                 // Цикли й мітки — за одним чипом, а не розсипом у цьому ж рядку.
@@ -392,21 +434,32 @@ fun LibraryScreen(
                 )
             }
 
-            if (settings.showStatsOnShelf && (weeklyStats.weekMs > 0 || weeklyStats.completedBooks > 0) && query.isBlank() && filter == LibraryFilter.All && selectedTag == null && selectedSeries == null && !isMultiSelect) {
+            // Картка історії: доти зʼявлялася лише після першого прослуховування й
+            // виглядала статичними цифрами, тож дізнатися, що вона відкриває історію,
+            // можна було хіба з налаштувань. Тепер вона є вже на непорожній полиці
+            // (без цифр — просто з назвою) і має шеврон, що видає в ній кнопку.
+            val hasStats = weeklyStats.weekMs > 0 || weeklyStats.completedBooks > 0
+            if (showHistoryCard(settings.showStatsOnShelf, hasStats, books.isNotEmpty(), settings.historyOpened) && query.isBlank() && filter == LibraryFilter.All && selectedTag == null && selectedSeries == null && !isMultiSelect) {
                 Spacer(Modifier.height(Spacing.m))
                 Surface(
                     shape = CardShape,
                     color = cardSurface,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable(onClick = onOpenHistory),
+                        .clickable(role = Role.Button, onClick = onOpenHistory),
                 ) {
                     Row(
                         Modifier.padding(horizontal = Spacing.l, vertical = Spacing.m),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
-                        Column {
+                        if (!hasStats) {
+                            Text(
+                                stringResource(R.string.history_title),
+                                style = MaterialTheme.typography.titleMedium,
+                                modifier = Modifier.weight(1f),
+                            )
+                        } else Column(Modifier.weight(1f)) {
                             Text(stringResource(R.string.stats_week_title), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Spacer(Modifier.height(Spacing.hair))
                             Text(listeningTimeText(weeklyStats.weekMs), style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
@@ -424,6 +477,11 @@ fun LibraryScreen(
                                 Text(pluralStringResource(R.plurals.books_count, weeklyStats.completedBooks, weeklyStats.completedBooks), style = MaterialTheme.typography.titleMedium)
                             }
                         }
+                        Icon(
+                            Icons.Outlined.ChevronRight,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 }
             }
@@ -435,15 +493,20 @@ fun LibraryScreen(
         // Ті самі умови, що й у картки статистики вище: мітка й серія теж
         // фільтрують полицю, і стрічка не має пропонувати книги повз вибраний
         // фільтр — доти вибір серії лишав нагорі сторонні книги.
-        if (resume.isNotEmpty() && query.isBlank() && filter == LibraryFilter.All &&
+        // Книга без жодного файла в стрічці «продовжити» безглузда: тап по ній
+        // нічого не вмикає, а місце займає.
+        val playable = remember(resume, missingFileCounts) {
+            resume.filter { missingFileCounts[it.book.id]?.isWhole != true }
+        }
+        if (playable.isNotEmpty() && query.isBlank() && filter == LibraryFilter.All &&
             selectedTag == null && selectedSeries == null && !isMultiSelect
         ) {
             Column(Modifier.padding(top = Spacing.l)) {
                 Text(stringResource(R.string.resume_section), style = MaterialTheme.typography.titleLarge)
                 Spacer(Modifier.height(Spacing.s))
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(Spacing.m)) {
-                    items(resume.size) { i ->
-                        val item = resume[i]
+                    items(playable.size) { i ->
+                        val item = playable[i]
                         Row(
                             Modifier
                                 .width(260.dp)
@@ -575,6 +638,7 @@ fun LibraryScreen(
                                     item,
                                     onClick = {
                                         if (isMultiSelect) vm.toggleSelectBook(item.book.id)
+                                        else if (missingFileCounts[item.book.id]?.isWhole == true) goneBookTarget = item
                                         else onOpenBook(item.book.id)
                                     },
                                     onLongClick = {
@@ -625,6 +689,7 @@ fun LibraryScreen(
                                     item,
                                     onClick = {
                                         if (isMultiSelect) vm.toggleSelectBook(item.book.id)
+                                        else if (missingFileCounts[item.book.id]?.isWhole == true) goneBookTarget = item
                                         else onOpenBook(item.book.id)
                                     },
                                     onLongClick = {
@@ -686,13 +751,17 @@ fun LibraryScreen(
                 }
             }
 
-            FloatingActionButton(
-                onClick = { if (!busy) addSheet = true },
-                modifier = Modifier.align(Alignment.BottomEnd).padding(end = Spacing.xl, bottom = 96.dp),
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-            ) {
-                Icon(Icons.Outlined.LibraryMusic, contentDescription = stringResource(R.string.add_book))
+            // На порожній полиці велика кнопка «Додати книгу» вже є в самому стані
+            // «порожньо» — друга така сама справа лише дублювала її без підпису.
+            if (books.isNotEmpty()) {
+                FloatingActionButton(
+                    onClick = { if (!busy) addSheet = true },
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(end = Spacing.xl, bottom = 96.dp),
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                ) {
+                    Icon(Icons.Outlined.LibraryMusic, contentDescription = stringResource(R.string.add_book))
+                }
             }
         }
 
@@ -828,6 +897,8 @@ fun LibraryScreen(
                                 "audio/ogg",
                                 "audio/flac",
                                 "audio/wav",
+                                "application/zip",
+                                "application/x-zip-compressed",
                                 "application/octet-stream",
                             ),
                         )
@@ -988,6 +1059,27 @@ fun LibraryScreen(
                 }
             }
         }
+    }
+
+    goneBookTarget?.let { item ->
+        AlertDialog(
+            onDismissRequest = { goneBookTarget = null },
+            title = { Text(item.book.title) },
+            text = { Text(stringResource(R.string.book_files_gone_body)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    goneBookTarget = null
+                    relinkBookId = item.book.id
+                    runCatching { pickRelinkTree.launch(null) }
+                }) { Text(stringResource(R.string.relink_action)) }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    goneBookTarget = null
+                    pendingDelete = item
+                }) { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) }
+            },
+        )
     }
 
     pendingDelete?.let { item ->

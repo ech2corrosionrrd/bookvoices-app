@@ -5,11 +5,13 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -24,6 +26,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
@@ -37,6 +40,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModel
@@ -82,13 +86,14 @@ class MainActivity : AppCompatActivity() {
         val container = (application as ListenApp).container
         // Колір вікна вибираємо до першого кадру, інакше «паперова» тема
         // стартує з темного блимання, а OLED — з посвітлілого.
-        when (container.prefs.themeModeBlocking()) {
+        val startTheme = container.prefs.themeModeBlocking()
+        when (startTheme) {
             ua.nichnyk.listen.data.AppTheme.PAPER -> setTheme(R.style.Theme_BookVoices_Paper)
             ua.nichnyk.listen.data.AppTheme.OLED -> setTheme(R.style.Theme_BookVoices_Oled)
             ua.nichnyk.listen.data.AppTheme.NIGHT -> Unit
         }
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        applySystemBars(startTheme)
         askNotificationPermissionOnFirstPlayback(container)
         syncEntitlementWithPlay(container)
         if (savedInstanceState == null) {
@@ -98,10 +103,30 @@ class MainActivity : AppCompatActivity() {
             val settings by container.prefs.settings.collectAsStateWithLifecycle(
                 initialValue = ua.nichnyk.listen.data.UserSettings(),
             )
+            // Тема застосунку не залежить від системної: без цього при світлій
+            // системній темі іконки статус-бара лишаються темними на темному фоні.
+            DisposableEffect(settings.themeMode) {
+                applySystemBars(settings.themeMode)
+                onDispose { }
+            }
             ListenTheme(theme = settings.themeMode) {
                 ListenAppRoot(container)
             }
         }
+    }
+
+    /**
+     * Безрамковий показ із кольором іконок системних панелей за темою застосунку,
+     * а не за системною: темні теми — світлі іконки, «Папір» — темні.
+     */
+    private fun applySystemBars(theme: ua.nichnyk.listen.data.AppTheme) {
+        val transparent = android.graphics.Color.TRANSPARENT
+        val bars = if (theme == ua.nichnyk.listen.data.AppTheme.PAPER) {
+            SystemBarStyle.light(transparent, transparent)
+        } else {
+            SystemBarStyle.dark(transparent)
+        }
+        enableEdgeToEdge(statusBarStyle = bars, navigationBarStyle = bars)
     }
 
     /**
@@ -283,10 +308,12 @@ private fun ListenAppRoot(container: AppContainer) {
     val purchaseSuccessMsg = stringResource(R.string.pro_purchase_success)
     val purchaseUnavailableMsg = stringResource(R.string.pro_purchase_unavailable)
     val purchaseFailedMsg = stringResource(R.string.pro_purchase_failed)
+    val purchasePendingMsg = stringResource(R.string.pro_purchase_pending)
     LaunchedEffect(settingsVm) {
         settingsVm.billingEvents.collect { event ->
             val message = when (event) {
                 ua.nichnyk.listen.billing.BillingEvent.PurchaseSuccess -> purchaseSuccessMsg
+                ua.nichnyk.listen.billing.BillingEvent.PurchasePending -> purchasePendingMsg
                 ua.nichnyk.listen.billing.BillingEvent.Unavailable -> purchaseUnavailableMsg
                 is ua.nichnyk.listen.billing.BillingEvent.Error -> purchaseFailedMsg
                 // Користувач сам закрив вікно оплати — повідомляти нема про що.
@@ -339,7 +366,18 @@ private fun ListenAppRoot(container: AppContainer) {
                                     }
                                 },
                                 icon = { androidx.compose.material3.Icon(tab.icon, contentDescription = title) },
-                                label = { Text(title) },
+                                // Підпис завжди в один рядок: при великому шрифті «Bookmarks» інакше
+                                // ламалося на «Bookmark / s».
+                                label = {
+                                    Text(
+                                        title,
+                                        maxLines = 1,
+                                        autoSize = androidx.compose.foundation.text.TextAutoSize.StepBased(
+                                            minFontSize = 9.sp,
+                                            maxFontSize = MaterialTheme.typography.labelMedium.fontSize,
+                                        ),
+                                    )
+                                },
                             )
                         }
                     }
@@ -348,10 +386,18 @@ private fun ListenAppRoot(container: AppContainer) {
         },
     ) { padding ->
 
+        // Однаково з полиці й з налаштувань: після першого відкриття порожня
+        // картка історії на полиці вже нічого не підказує.
+        val openHistory = {
+            settingsVm.historyOpened()
+            nav.navigate(Dest.History)
+        }
         NavHost(
             navController = nav,
             startDestination = Dest.Library,
-            modifier = Modifier.padding(padding),
+            // Відступи кореневого Scaffold спожито: інакше TopAppBar і statusBarsPadding
+            // вкладених екранів додають статус-бар вдруге, і зверху лишається порожня смуга.
+            modifier = Modifier.padding(padding).consumeWindowInsets(padding),
         ) {
             composable(Dest.Library) {
                 LibraryScreen(
@@ -359,17 +405,21 @@ private fun ListenAppRoot(container: AppContainer) {
                     onOpenBook = { nav.navigate(Dest.book(it)) },
                     onPlayNow = { openPlayer() },
                     snack = { msg -> scope.launch { snack.showSnackbar(msg) } },
-                    onOpenHistory = { nav.navigate(Dest.History) },
+                    onOpenHistory = openHistory,
                     onOpenSeries = { nav.navigate(Dest.series(it)) },
                 )
             }
             composable(Dest.Bookmarks) {
-                BookmarksScreen(bookmarksVm, onPlayed = { openPlayer() })
+                BookmarksScreen(
+                    bookmarksVm,
+                    onPlayed = { openPlayer() },
+                    onOpenPlayer = if (playerState.book != null) ({ openPlayer() }) else null,
+                )
             }
             composable(Dest.Settings) {
                 SettingsScreen(
                     settingsVm,
-                    onOpenHistory = { nav.navigate(Dest.History) },
+                    onOpenHistory = openHistory,
                     onRequestPro = { showPaywall = true },
                 )
             }

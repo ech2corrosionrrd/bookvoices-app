@@ -28,6 +28,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import ua.nichnyk.listen.ListenApp
+import ua.nichnyk.listen.data.AvailabilityCache
 import ua.nichnyk.listen.data.BookEntity
 import ua.nichnyk.listen.data.ChapterEntity
 
@@ -51,6 +52,9 @@ class BrowseTreeTest {
     @Before
     fun setUp() = runBlocking {
         app = ApplicationProvider.getApplicationContext()
+        // Фікстури нижче мають вигадані адреси `file:///…`, яких на диску немає, — без
+        // цього фільтр втрачених книг сховав би всю «бібліотеку» тесту.
+        app.container.availability = AvailabilityCache(probe = { emptySet() })
         clearShelf()
         insertBook(
             "b1", "Тіні забутих предків", "Коцюбинський",
@@ -76,6 +80,7 @@ class BrowseTreeTest {
         withContext(Dispatchers.Main) { browser?.release() }
         browser = null
         clearShelf()
+        app.container.availability = AvailabilityCache(app.container.repo::inaccessibleUris)
     }
 
     private suspend fun clearShelf() {
@@ -143,6 +148,31 @@ class BrowseTreeTest {
     }
 
     private fun titles(items: List<MediaItem>) = items.map { it.mediaMetadata.title.toString() }
+
+    /** Книга, від якої не лишилося жодного файла, у машині недоступна й не плутає список. */
+    @Test
+    fun bookWithEveryFileGoneIsHiddenFromAutoLists() = runBlocking {
+        app.container.availability = AvailabilityCache(probe = { uris ->
+            uris.filter { it.startsWith("file:///b1-") }.toSet()
+        })
+        assertEquals(setOf("b2", "b3"), children(PlaybackService.ALL_BOOKS_ID).map { it.mediaId }.toSet())
+        assertEquals(
+            listOf("Кобилянська", "Підмогильний"),
+            titles(children(PlaybackService.AUTHORS_ID)),
+        )
+        // b1 — єдина почата й недослухана книга: «Слухаю» лишається з рядком-поясненням.
+        assertEquals(
+            listOf(PlaybackService.EMPTY_PREFIX + PlaybackService.CONTINUE_ID),
+            children(PlaybackService.CONTINUE_ID).map { it.mediaId },
+        )
+    }
+
+    /** Частково втрачена книга лишається: решту розділів слухати можна. */
+    @Test
+    fun bookWithSomeFilesLeftStaysInAutoLists() = runBlocking {
+        app.container.availability = AvailabilityCache(probe = { _ -> setOf("file:///b1-0.mp3") })
+        assertTrue("b1" in children(PlaybackService.ALL_BOOKS_ID).map { it.mediaId })
+    }
 
     @Test
     fun rootIsCategoriesNotFlatShelf() = runBlocking {
@@ -564,7 +594,13 @@ class BrowseTreeTest {
             )
             .build()
         withController { c ->
-            withContext(Dispatchers.Main) { c.setMediaItem(request) }
+            // Сервіс живе між тестами: якщо попередній лишив відтворення ввімкненим, плеєр
+            // на вигаданому `file:///…` падає з помилкою й перескакує на наступну главу.
+            // Запит має перевіряти лише, куди резолвиться пошук, тож ставимо на паузу.
+            withContext(Dispatchers.Main) {
+                c.playWhenReady = false
+                c.setMediaItem(request)
+            }
             c.awaitQueueOf(3)
             withContext(Dispatchers.Main) {
                 assertEquals("і теж продовжити з збереженого місця", 1, c.currentMediaItemIndex)

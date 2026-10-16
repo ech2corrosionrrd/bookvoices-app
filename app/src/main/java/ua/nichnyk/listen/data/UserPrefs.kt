@@ -88,7 +88,16 @@ data class UserSettings(
     val doubleTapSeek: Boolean = true,
     val shakeToExtendSleep: Boolean = true,
     val showStatsOnShelf: Boolean = true,
+    /** Користувач хоч раз відкривав історію: тоді порожня картка на полиці більше не потрібна. */
+    val historyOpened: Boolean = false,
     val autoBookmarkBluetooth: Boolean = true,
+    /** Продовжити слухання, коли навушники чи авто повернулись після короткого розриву. Вимкнено за замовчуванням. */
+    val resumeOnReconnect: Boolean = false,
+    /** Нічний таймер сну: у вікні [nightTimerStartMinute]..[nightTimerEndMinute] (хвилини доби) відтворення саме заводить таймер. */
+    val nightTimerEnabled: Boolean = false,
+    val nightTimerStartMinute: Int = 22 * 60,
+    val nightTimerEndMinute: Int = 6 * 60,
+    val nightTimerMinutes: Int = 30,
     val headsetDoubleTapAction: HeadsetAction = HeadsetAction.NONE,
     val headsetTripleTapAction: HeadsetAction = HeadsetAction.NONE,
     val language: String = "",
@@ -205,7 +214,13 @@ class UserPrefs(context: Context, private val secrets: SecretStore) {
             doubleTapSeek = p[DOUBLE_TAP] ?: true,
             shakeToExtendSleep = p[SHAKE_SLEEP] ?: true,
             showStatsOnShelf = p[SHOW_STATS] ?: true,
+            historyOpened = p[HISTORY_OPENED] ?: false,
             autoBookmarkBluetooth = pro && (p[AUTO_BOOKMARK_BT] ?: true),
+            resumeOnReconnect = p[RESUME_ON_RECONNECT] ?: false,
+            nightTimerEnabled = p[NIGHT_TIMER_ENABLED] ?: false,
+            nightTimerStartMinute = (p[NIGHT_TIMER_START] ?: (22 * 60)).coerceIn(0, 24 * 60 - 1),
+            nightTimerEndMinute = (p[NIGHT_TIMER_END] ?: (6 * 60)).coerceIn(0, 24 * 60 - 1),
+            nightTimerMinutes = (p[NIGHT_TIMER_MINUTES] ?: 30).coerceIn(5, 180),
             headsetDoubleTapAction = doubleTapAct,
             headsetTripleTapAction = tripleTapAct,
             language = p[LANGUAGE] ?: "",
@@ -267,7 +282,13 @@ class UserPrefs(context: Context, private val secrets: SecretStore) {
     suspend fun setDoubleTapSeek(value: Boolean) { store.edit { it[DOUBLE_TAP] = value } }
     suspend fun setShakeToExtendSleep(value: Boolean) { store.edit { it[SHAKE_SLEEP] = value } }
     suspend fun setShowStatsOnShelf(value: Boolean) { store.edit { it[SHOW_STATS] = value } }
+    suspend fun setHistoryOpened() { store.edit { it[HISTORY_OPENED] = true } }
     suspend fun setAutoBookmarkBluetooth(value: Boolean) { store.edit { it[AUTO_BOOKMARK_BT] = value } }
+    suspend fun setResumeOnReconnect(value: Boolean) { store.edit { it[RESUME_ON_RECONNECT] = value } }
+    suspend fun setNightTimerEnabled(value: Boolean) { store.edit { it[NIGHT_TIMER_ENABLED] = value } }
+    suspend fun setNightTimerStart(minute: Int) { store.edit { it[NIGHT_TIMER_START] = minute.coerceIn(0, 24 * 60 - 1) } }
+    suspend fun setNightTimerEnd(minute: Int) { store.edit { it[NIGHT_TIMER_END] = minute.coerceIn(0, 24 * 60 - 1) } }
+    suspend fun setNightTimerMinutes(minutes: Int) { store.edit { it[NIGHT_TIMER_MINUTES] = minutes.coerceIn(5, 180) } }
 
     /**
      * Додати головну папку бібліотеки. Повертає false, якщо вже є або досягнуто
@@ -395,7 +416,13 @@ class UserPrefs(context: Context, private val secrets: SecretStore) {
         private val DOUBLE_TAP = booleanPreferencesKey("double_tap")
         private val SHAKE_SLEEP = booleanPreferencesKey("shake_sleep")
         private val SHOW_STATS = booleanPreferencesKey("show_stats")
+        private val HISTORY_OPENED = booleanPreferencesKey("history_opened")
         private val AUTO_BOOKMARK_BT = booleanPreferencesKey("auto_bookmark_bt")
+        private val RESUME_ON_RECONNECT = booleanPreferencesKey("resume_on_reconnect")
+        private val NIGHT_TIMER_ENABLED = booleanPreferencesKey("night_timer_enabled")
+        private val NIGHT_TIMER_START = intPreferencesKey("night_timer_start")
+        private val NIGHT_TIMER_END = intPreferencesKey("night_timer_end")
+        private val NIGHT_TIMER_MINUTES = intPreferencesKey("night_timer_minutes")
         private val HEADSET_DOUBLE_TAP = stringPreferencesKey("headset_double_tap")
         private val HEADSET_TRIPLE_TAP = stringPreferencesKey("headset_triple_tap")
         private val LANGUAGE = stringPreferencesKey("language")

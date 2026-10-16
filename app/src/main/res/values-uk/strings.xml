@@ -10,6 +10,7 @@
     <string name="greeting_night">Тихої ночі</string>
     <string name="search_placeholder">Назва або автор</string>
     <string name="close_search">Закрити пошук</string>
+    <string name="clear_search_text">Очистити пошук</string>
     <string name="filter_all">Усі</string>
     <string name="filter_listening">Слухаю</string>
     <string name="filter_finished">Завершені</string>
@@ -40,6 +41,7 @@
     <string name="delete_book_confirm">Видалити книгу з полиці?</string>
     <string name="empty_shelf_title">Полиця порожня</string>
     <string name="empty_shelf_subtitle">Додайте аудіокниги з пам\'яті телефону або спробуйте демо-розділ</string>
+    <string name="empty_shelf_tip">Порада: оберіть папку. Папка з аудіофайлами стане однією книгою, а папка з папками — кількома. Назвіть її «Автор - Назва», і автора буде вказано автоматично.</string>
     <string name="stats_week_title">ЧАС ЗА ЦЕЙ ТИЖДЕНЬ</string>
     <string name="stats_today_title">СЬОГОДНІ</string>
     <string name="stats_read_title">ПРОЧИТАНО</string>
@@ -53,6 +55,8 @@
     <string name="bookmark_note_label">Замітка (необов\'язково)</string>
     <string name="bookmark_saved">Закладку збережено</string>
     <string name="book_progress">Книга: %d%%</string>
+    <string name="book_progress_chapter">Розділ %1$d з %2$d · Книга %3$d%%</string>
+    <string name="book_time_left">Залишилось %1$s при %2$s</string>
     <string name="play">Грати</string>
     <string name="pause">Пауза</string>
     <string name="rewind_sec">Назад %d с</string>
@@ -64,6 +68,7 @@
     <string name="sleep_badge_chapter">Гл</string>
     <string name="speed_and_audio">Швидкість прослуховування</string>
     <string name="current_speed">Поточна швидкість</string>
+    <string name="speed_saved_per_book">Зберігається для цієї книги</string>
     <string name="quick_presets">Швидкі пресети</string>
     <string name="skip_silence">Пропуск тиші</string>
     <string name="skip_silence_desc">Скорочувати паузи між словами</string>
@@ -74,6 +79,7 @@
     <string name="edit_note">Редагувати замітку</string>
     <string name="no_bookmarks">Закладок ще немає</string>
     <string name="no_bookmarks_desc">Додавайте закладки в плеєрі, щоб повертатися до улюблених моментів.</string>
+    <string name="bookmarks_open_player">Відкрити плеєр</string>
     <string name="settings_title">Налаштування</string>
     <string name="settings_subtitle">Підлаштуйте кожен елемент під себе</string>
     <string name="section_appearance">Вигляд</string>
@@ -99,6 +105,12 @@
     <string name="fade_on_sleep_desc">Гучність плавно стихне перед зупинкою</string>
     <string name="shake_sleep">Струшування для продовження таймера</string>
     <string name="shake_sleep_desc">Потрясіть телефон, щоб додати +10 хв до сну</string>
+    <string name="night_timer">Нічний таймер сну</string>
+    <string name="night_timer_desc">Коли ви вмикаєте відтворення в обрані години, таймер сну заводиться сам</string>
+    <string name="night_timer_from">З</string>
+    <string name="night_timer_to">До</string>
+    <string name="night_timer_length">Тривалість таймера</string>
+    <string name="night_timer_minutes_format">%d хв</string>
     <string name="section_audio">Аудіо-рушій</string>
     <string name="default_speed">Швидкість за замовчуванням</string>
     <string name="section_stats">Полиця та Статистика</string>
@@ -130,6 +142,7 @@
     <string name="about_app_desc">Аудіокниги з полиці телефону. Прогрес, глави, закладки, таймер сну і плеєр у шторці сповіщень.</string>
 
     <string name="version_format">Версія %s</string>
+    <string name="rate_app">Оцінити BookVoices у Google Play</string>
     <string name="seconds_format">%d с</string>
     <string name="minutes_format">%d хв</string>
     <string name="btn_start">Почати</string>
@@ -170,6 +183,8 @@
     <string name="demo_book_title">BookVoices. Вступ</string>
     <string name="demo_book_author">BookVoices</string>
     <string name="import_no_space">Замало вільного місця, щоб скопіювати файл</string>
+    <string name="import_zip_no_audio">В архіві немає аудіофайлів</string>
+    <string name="import_zip_unreadable">Не вдалося прочитати архів</string>
 
     <string name="unit_hours_short">год</string>
     <string name="unit_minutes_short">хв</string>
@@ -178,11 +193,12 @@
     <string name="webdav_err_insecure">Потрібне зʼєднання HTTPS — пароль не можна передавати незашифрованим</string>
     <string name="webdav_err_auth">Невірний логін або пароль</string>
     <string name="webdav_err_rate_limit">Забагато спроб. Зачекайте кілька хвилин і повторіть</string>
+    <string name="webdav_err_too_large">Файл на сервері завеликий для резервної копії BookVoices</string>
     <string name="webdav_err_folder">Теку не знайдено — перевірте шлях у адресі сервера</string>
     <string name="webdav_err_absent">Резервної копії на сервері ще немає</string>
     <string name="webdav_err_http">Сервер відповів: HTTP %1$d %2$s</string>
     <string name="webdav_err_network">Не вдалося зʼєднатися з сервером</string>
-    <string name="webdav_auth_failed">Фонову синхронізацію зупинено: сервер відхилив логін або пароль. Перевірте дані й натисніть «Перевірити».</string>
+    <string name="webdav_auth_failed">Фонову синхронізацію зупинено: потрібно перевірити адресу сервера чи дані входу. Перевірте їх і натисніть «Перевірити».</string>
     <string name="webdav_save_btn">Зберегти</string>
     <string name="webdav_saved">Дані WebDAV збережено</string>
     <string name="webdav_password_hint">Порожнє поле стирає збережений пароль</string>
@@ -223,6 +239,8 @@
     <string name="relink_done">Книгу перепривʼязано</string>
     <string name="relink_partial">Перепривʼязано %1$d із %2$d файлів</string>
     <string name="relink_failed">У цій теці не знайдено файлів цієї книги</string>
+    <string name="book_files_gone_label">Файли відсутні</string>
+    <string name="book_files_gone_body">Файлів цієї книги більше немає. Прогрес і закладки зберігаються, доки ви не приберете книгу з полиці.</string>
 
     <!-- Хвиля A (A1-A6) -->
     <plurals name="book_files_missing_count">
@@ -283,6 +301,7 @@
 
     <!-- Хвиля B (B1-B5) -->
     <string name="queue_title">Черга «Грати далі»</string>
+    <string name="player_action_queue">Черга</string>
     <string name="add_to_queue">Додати в чергу</string>
     <string name="added_to_queue">Додано в чергу: %s</string>
     <string name="queue_empty">Черга порожня</string>
@@ -315,6 +334,7 @@
     <string name="smart_rewind_desc">Автоматично відмотувати назад на 5–30 с після тривалої паузи</string>
     <string name="mono_audio">Моно-аудіо</string>
     <string name="mono_audio_desc">Зведення стерео в один канал для слухання одним навушником</string>
+    <string name="headset_actions_summary">2×: %1$s · 3×: %2$s</string>
     <string name="headset_actions">Кнопки гарнітури</string>
     <string name="headset_actions_desc">Доки обидві дії — «нічого», кнопка працює як завжди й пауза спрацьовує миттєво. Будь-який інший вибір змушує чекати другого натискання близько третини секунди</string>
     <string name="headset_action_none">Нічого</string>
@@ -374,6 +394,8 @@
     <string name="export_catalog_total_duration">Загальна тривалість: %s</string>
     <string name="auto_bookmark_bluetooth">Автозакладка при розриві Bluetooth</string>
     <string name="auto_bookmark_bluetooth_desc">Автоматично зберігати мітку при вимкненні авто або навушників</string>
+    <string name="resume_on_reconnect">Продовжувати, коли навушники знову підключено</string>
+    <string name="resume_on_reconnect_desc">Після короткого розриву (до 15 хвилин) книга сама продовжиться, щойно навушники чи авто підключаться знову</string>
     <string name="bookmark_bluetooth_disconnected">Розрив Bluetooth о %s</string>
     <string name="bookmark_headset_disconnected">Відключення навушників о %s</string>
     <string name="jump_back_to">Повернутися на %s</string>
@@ -396,6 +418,7 @@
     <string name="pro_purchase_success">Дякуємо! Ліцензію Pro активовано</string>
     <string name="pro_purchase_unavailable">Магазин Play зараз недоступний — спробуйте пізніше</string>
     <string name="pro_purchase_failed">Покупку не завершено</string>
+    <string name="pro_purchase_pending">Оплата очікує підтвердження — Pro увімкнеться, щойно її підтвердять</string>
     <string name="characters_title">Персонажі</string>
     <string name="characters_empty">Немає збережених персонажів</string>
     <string name="add_character">Додати персонажа</string>

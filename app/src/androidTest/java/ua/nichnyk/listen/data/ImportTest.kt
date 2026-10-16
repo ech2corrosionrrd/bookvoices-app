@@ -79,6 +79,119 @@ class ImportTest {
         assertEquals(book.chapters.sumOf { it.durationMs }, book.book.durationMs)
     }
 
+    /**
+     * Одна книга одним mp3 з главами в ID3: без розбору CHAP це була б одна
+     * довга глава без навігації. Файл — справжній mp3, тож тривалість читає
+     * той самий MediaMetadataRetriever, що й на пристрої.
+     */
+    @Test
+    fun mp3WithId3ChaptersImportsAsRangesOfOneFile() = runBlocking {
+        val file = TestAudio.writeMp3WithChapters(
+            File(workDir, "book.mp3"),
+            seconds = 20,
+            chapters = listOf("Вступ" to 4_000L, "Глава перша" to 9_000L, "Глава друга" to 15_000L),
+        )
+
+        val outcome = repo.importUris(listOf(file.toUri()))
+        val chapters = db.library().getBook(outcome.single!!.id)!!.chapters.sortedBy { it.index }
+
+        assertEquals(listOf("Вступ", "Глава перша", "Глава друга"), chapters.map { it.title })
+        // Перша глава тягнеться до 0: усе до неї інакше було б недосяжним.
+        assertEquals(listOf(0L, 9_000L, 15_000L), chapters.map { it.startMs })
+        assertEquals(chapters.drop(1).map { it.startMs }, chapters.dropLast(1).map { it.endMs })
+        assertTrue("остання глава має ненульову довжину", chapters.last().endMs > chapters.last().startMs)
+        assertEquals(1, chapters.map { it.uri }.toSet().size)
+    }
+
+    private fun zipOf(name: String, entries: List<Pair<String, ByteArray>>): File {
+        val file = File(workDir, name)
+        java.util.zip.ZipOutputStream(file.outputStream()).use { zip ->
+            entries.forEach { (entry, bytes) ->
+                zip.putNextEntry(java.util.zip.ZipEntry(entry))
+                zip.write(bytes)
+                zip.closeEntry()
+            }
+        }
+        return file
+    }
+
+    /**
+     * Книга в архіві: розпаковуємо в сховище застосунку, глави йдуть за шляхом у
+     * архіві (10 після 2), а видалення книги прибирає розпаковані файли.
+     */
+    @Test
+    fun zipArchiveImportsAsOneBookAndDeletingItRemovesExtractedFiles() = runBlocking {
+        val zip = zipOf(
+            "book.zip",
+            listOf(
+                "Книга/10.wav" to TestAudio.writeWav(File(workDir, "src10.wav"), 1).readBytes(),
+                "Книга/2.wav" to TestAudio.writeWav(File(workDir, "src2.wav"), 1).readBytes(),
+                "Книга/1.wav" to TestAudio.writeWav(File(workDir, "src1.wav"), 1).readBytes(),
+                "Книга/notes.txt" to "не аудіо".toByteArray(),
+            ),
+        )
+        val importsDir = File(context.filesDir, "imports")
+        val before = importsDir.listFiles()?.size ?: 0
+
+        val outcome = repo.importUris(listOf(zip.toUri()))
+        val book = db.library().getBook(outcome.single!!.id)!!
+        val chapters = book.chapters.sortedBy { it.index }
+
+        assertEquals(listOf("1", "2", "10"), chapters.map { it.title })
+        assertTrue("глави мають бути в сховищі застосунку", chapters.all { it.uri.contains("/imports/") })
+        assertEquals("текстовий файл не мав розпаковуватись", before + 3, importsDir.listFiles()!!.size)
+        assertTrue(book.book.durationMs > 0L)
+
+        repo.deleteBook(book.book.id)
+        assertEquals("розпаковані файли мають зникнути разом із книгою", before, importsDir.listFiles()?.size ?: 0)
+    }
+
+    @Test
+    fun zipWithoutAudioFailsWithAMessageAndLeavesNoFiles() = runBlocking {
+        val zip = zipOf("empty.zip", listOf("readme.txt" to "нічого".toByteArray()))
+        val importsDir = File(context.filesDir, "imports")
+        val before = importsDir.listFiles()?.size ?: 0
+
+        val failure = runCatching { repo.importUris(listOf(zip.toUri())) }.exceptionOrNull()
+
+        assertNotNull("очікувалась помилка", failure)
+        assertEquals(context.getString(ua.nichnyk.listen.R.string.import_zip_no_audio), failure!!.message)
+        assertEquals(before, importsDir.listFiles()?.size ?: 0)
+    }
+
+    /**
+     * Файли названі за змістом, а не за номерами: за алфавітом книга пішла б у хибному
+     * порядку. Справжній порядок — номер доріжки в тегу, і читається він системою.
+     */
+    @Test
+    fun filesNamedByContentAreOrderedByTrackNumberFromTags() = runBlocking {
+        val uris = listOf(
+            TestAudio.writeMp3WithTrack(File(workDir, "alpha.mp3"), 2, track = 3).toUri(),
+            TestAudio.writeMp3WithTrack(File(workDir, "bravo.mp3"), 2, track = 1).toUri(),
+            TestAudio.writeMp3WithTrack(File(workDir, "charlie.mp3"), 2, track = 2).toUri(),
+        )
+
+        val outcome = repo.importUris(uris)
+        val chapters = db.library().getBook(outcome.single!!.id)!!.chapters.sortedBy { it.index }
+
+        assertEquals(listOf("bravo", "charlie", "alpha"), chapters.map { it.title })
+    }
+
+    @Test
+    fun numberedFileNamesWinOverConflictingTags() = runBlocking {
+        // Імена з номерами — порядок завжди за ними, хоч би що лежало в тегах.
+        val uris = listOf(
+            TestAudio.writeMp3WithTrack(File(workDir, "01 first.mp3"), 2, track = 9).toUri(),
+            TestAudio.writeMp3WithTrack(File(workDir, "02 second.mp3"), 2, track = 1).toUri(),
+            TestAudio.writeMp3WithTrack(File(workDir, "03 third.mp3"), 2, track = 5).toUri(),
+        )
+
+        val outcome = repo.importUris(uris)
+        val chapters = db.library().getBook(outcome.single!!.id)!!.chapters.sortedBy { it.index }
+
+        assertEquals(listOf("01 first", "02 second", "03 third"), chapters.map { it.title })
+    }
+
     @Test
     fun importGeneratesCoverAndStartsUnplayed() = runBlocking {
         val outcome = repo.importUris(listOf(wav("chapter.wav")))

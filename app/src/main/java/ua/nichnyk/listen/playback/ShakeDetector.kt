@@ -15,7 +15,7 @@ class ShakeDetector(
     private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
     private val accelerometer = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
 
-    private var lastShakeTime = 0L
+    private val logic = ShakeLogic()
     private var isListening = false
 
     fun start() {
@@ -44,20 +44,10 @@ class ShakeDetector(
         // gForce will be close to 1 when still
         val gForce = sqrt(gX * gX + gY * gY + gZ * gZ)
 
-        if (gForce > SHAKE_THRESHOLD_GRAVITY) {
-            val now = System.currentTimeMillis()
-            if (lastShakeTime + SHAKE_SLOP_TIME_MS > now) {
-                return
-            }
-            lastShakeTime = now
-            onShake()
-        }
+        // Монотонний час: стінний годинник міг би піти назад посеред серії.
+        if (logic.onReading(gForce, android.os.SystemClock.elapsedRealtime())) onShake()
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
 
-    companion object {
-        private const val SHAKE_THRESHOLD_GRAVITY = 2.2f
-        private const val SHAKE_SLOP_TIME_MS = 1500L
-    }
 }

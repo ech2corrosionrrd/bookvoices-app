@@ -8,6 +8,8 @@ import ua.nichnyk.listen.data.AudioImporter.Companion.bookFolderTitle
 import ua.nichnyk.listen.data.AudioImporter.Companion.findBookFolders
 import ua.nichnyk.listen.data.AudioImporter.Companion.groupKey
 import ua.nichnyk.listen.data.AudioImporter.Companion.isDiscFolder
+import ua.nichnyk.listen.data.AudioImporter.Companion.isJunkName
+import ua.nichnyk.listen.data.AudioImporter.Companion.isJunkPath
 
 /**
  * Розкладання вмісту обраної теки по книгах.
@@ -112,6 +114,64 @@ class ImportGroupingTest {
     }
 
     @Test
+    fun twoDiscsPlusABonusFolderAreOneBookNotThree() {
+        // Раніше «Бонус» поряд із дисками змушував різати книгу на CD1, CD2 і Бонус.
+        val result = group(listOf("Книга/CD1/01.mp3", "Книга/CD2/01.mp3", "Книга/Бонус/інтерв'ю.mp3"))
+        assertEquals(setOf("Книга"), result.keys)
+        assertEquals(3, result.getValue("Книга").size)
+    }
+
+    @Test
+    fun twoDiscsPlusExtrasUnderTheSelectionRootIsOneBook() {
+        val result = group(listOf("Disc 1/a.mp3", "Disc 2/a.mp3", "Extras/a.mp3"))
+        assertEquals(setOf(""), result.keys)
+        assertEquals(3, result.getValue("").size)
+    }
+
+    @Test
+    fun aSingleNumberedFolderBesideOthersStillSplitsAsBefore() {
+        // Одна тека-число поряд з іншими може бути бібліотекою, а не диском: старе правило.
+        val result = group(listOf("Автор/01/a.mp3", "Автор/Місто/a.mp3"))
+        assertEquals(setOf("Автор/01", "Автор/Місто"), result.keys)
+    }
+
+    @Test
+    fun chapterFoldersStayInsideTheirBook() {
+        // Раніше кожна «Глава N» ставала окремою книгою.
+        for (name in listOf("Глава", "Розділ", "Chapter", "Раздел")) {
+            val result = group(listOf("Книга/$name 1/01.mp3", "Книга/$name 2/01.mp3"))
+            assertEquals("$name: ${result.keys}", setOf("Книга"), result.keys)
+        }
+        assertTrue(isDiscFolder("Глава 12"))
+        assertTrue(isDiscFolder("chapter_3"))
+        assertFalse("«Глава» без числа — це може бути назва книги", isDiscFolder("Глава"))
+        assertFalse(isDiscFolder("Chapters of my life"))
+    }
+
+    @Test
+    fun hiddenAndSystemEntriesAreJunk() {
+        assertTrue(isJunkName(".trashed-1700000000-02.mp3"))
+        assertTrue(isJunkName("._01.mp3"))
+        assertTrue(isJunkName(".thumbnails"))
+        assertTrue(isJunkName("__MACOSX"))
+        assertTrue(isJunkName("__macosx"))
+        assertFalse(isJunkName("01.mp3"))
+        assertFalse(isJunkName("Книга. Том 2.mp3"))
+        assertFalse(isJunkName("a.b.mp3"))
+    }
+
+    @Test
+    fun anyJunkSegmentMakesTheWholePathJunk() {
+        assertTrue(isJunkPath("__MACOSX/Книга/01.mp3"))
+        assertTrue(isJunkPath("Книга/._01.mp3"))
+        assertTrue(isJunkPath("Книга/.hidden/01.mp3"))
+        assertTrue(isJunkPath("Книга\\.trashed-1-x.mp3"))
+        assertFalse(isJunkPath("Книга/CD1/01.mp3"))
+        assertFalse(isJunkPath("01.mp3"))
+        assertFalse(isJunkPath(""))
+    }
+
+    @Test
     fun yearFolderIsABookNotADisc() {
         assertFalse(isDiscFolder("1984"))
         assertTrue(isDiscFolder("01"))
@@ -164,6 +224,37 @@ class ImportGroupingTest {
         val (a2, t2) = ua.nichnyk.listen.data.AudioImporter.Companion.parseFolderAuthorAndTitle("Класика/Шевченко/Кобзар", null)
         assertEquals("Шевченко", a2)
         assertEquals("Кобзар", t2)
+    }
+
+    /**
+     * Крапка в імені теки — не розширення файла. Ініціали авторів («H. G. Wells»,
+     * «J. R. R. Tolkien») і «т. 2» у назві давали обрізану назву на полиці:
+     * «H. G. Wells - The Time Machine» ставала книгою «H. G» без автора.
+     */
+    @Test
+    fun parseFolderAuthorAndTitleKeepsDotsInFolderName() {
+        val parse = ua.nichnyk.listen.data.AudioImporter.Companion::parseFolderAuthorAndTitle
+
+        val (a1, t1) = parse("H. G. Wells - The Time Machine", null)
+        assertEquals("H. G. Wells", a1)
+        assertEquals("The Time Machine", t1)
+
+        val (a2, t2) = parse("J. R. R. Tolkien - The Hobbit", null)
+        assertEquals("J. R. R. Tolkien", a2)
+        assertEquals("The Hobbit", t2)
+
+        val (a3, t3) = parse("Harry Potter Vol. 2", null)
+        assertEquals(null, a3)
+        assertEquals("Harry Potter Vol. 2", t3)
+    }
+
+    /** Справжнє аудіо-розширення в імені (файл, а не тека) і далі знімається. */
+    @Test
+    fun parseFolderAuthorAndTitleStillStripsAudioExtension() {
+        val (a, t) = ua.nichnyk.listen.data.AudioImporter.Companion
+            .parseFolderAuthorAndTitle("", "Леся Українка - Лісова пісня.mp3")
+        assertEquals("Леся Українка", a)
+        assertEquals("Лісова пісня", t)
     }
 
     @Test

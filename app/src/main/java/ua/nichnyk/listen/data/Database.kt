@@ -51,6 +51,53 @@ interface LibraryDao {
     @Query("DELETE FROM books WHERE id = :id")
     suspend fun deleteBook(id: String)
 
+    // Точкові оновлення замість `updateBook(book.copy(...))`: той переписує весь рядок
+    // зі знімка, зробленого раніше, і затирає поля, які за цей час змінив хтось інший —
+    // позицію, яку щойно записав плеєр, назву, закріплення.
+
+    /** null у [lastPlayedAt] і [completed] — «не чіпати»; тривалість із [durationHint] лише якщо своєї ще нема. */
+    @Query(
+        "UPDATE books SET currentChapterIndex = :chapterIndex, positionMs = :positionMs, " +
+            "lastPlayedAt = COALESCE(:lastPlayedAt, lastPlayedAt), " +
+            "durationMs = CASE WHEN durationMs > 0 THEN durationMs ELSE :durationHint END, " +
+            "playbackSpeed = :speed, completed = COALESCE(:completed, completed) WHERE id = :bookId",
+    )
+    suspend fun updateProgress(
+        bookId: String,
+        chapterIndex: Int,
+        positionMs: Long,
+        lastPlayedAt: Long?,
+        durationHint: Long,
+        speed: Float,
+        completed: Boolean?,
+    )
+
+    @Query("UPDATE books SET completed = :completed, lastPlayedAt = COALESCE(lastPlayedAt, :now) WHERE id = :bookId")
+    suspend fun updateCompleted(bookId: String, completed: Boolean, now: Long)
+
+    @Query("UPDATE books SET title = :title, author = :author, coverPath = :coverPath, renamedAt = :renamedAt WHERE id = :bookId")
+    suspend fun updateIdentity(bookId: String, title: String, author: String, coverPath: String?, renamedAt: Long)
+
+    @Query("UPDATE books SET sourceTreeUri = :treeUri, sourceFolderDocId = :folderDocId WHERE id = :bookId")
+    suspend fun updateSource(bookId: String, treeUri: String?, folderDocId: String?)
+
+    /** Дописані глави подовжують книгу й знімають «дослухано», якщо додали щось із тривалістю. */
+    @Query(
+        "UPDATE books SET durationMs = durationMs + :addedMs, " +
+            "completed = CASE WHEN :addedMs > 0 THEN 0 ELSE completed END WHERE id = :bookId",
+    )
+    suspend fun extendBook(bookId: String, addedMs: Long)
+
+    /** Лікує лише нуль: непорожню тривалість з імпорту не чіпає. Повертає кількість змінених глав. */
+    @Query("UPDATE chapters SET durationMs = :durationMs WHERE id = :chapterId AND durationMs <= 0")
+    suspend fun fillChapterDuration(chapterId: String, durationMs: Long): Int
+
+    @Query(
+        "UPDATE books SET durationMs = " +
+            "(SELECT COALESCE(SUM(durationMs), 0) FROM chapters WHERE bookId = books.id) WHERE id = :bookId",
+    )
+    suspend fun recomputeBookDuration(bookId: String)
+
     @Query("UPDATE books SET pinned = :pinned WHERE id = :bookId")
     suspend fun setPinned(bookId: String, pinned: Boolean)
 

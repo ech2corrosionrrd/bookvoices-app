@@ -10,6 +10,7 @@
     <string name="greeting_night">Bonne nuit</string>
     <string name="search_placeholder">Titre ou auteur</string>
     <string name="close_search">Fermer la recherche</string>
+    <string name="clear_search_text">Effacer la recherche</string>
     <string name="filter_all">Tous</string>
     <string name="filter_listening">En cours</string>
     <string name="filter_finished">Terminés</string>
@@ -40,6 +41,7 @@
     <string name="delete_book_confirm">Supprimer le livre de l\'étagère ?</string>
     <string name="empty_shelf_title">L\'étagère est vide</string>
     <string name="empty_shelf_subtitle">Ajoutez des livres audio depuis la mémoire de votre téléphone ou essayez le chapitre de démonstration</string>
+    <string name="empty_shelf_tip">Astuce : choisissez un dossier. Un dossier contenant des fichiers audio devient un livre ; un dossier de dossiers en devient plusieurs. Nommez-le « Auteur - Titre » pour renseigner l’auteur automatiquement.</string>
     <string name="stats_week_title">TEMPS CETTE SEMAINE</string>
     <string name="stats_today_title">AUJOURD\'HUI</string>
     <string name="stats_read_title">ÉCOUTÉ</string>
@@ -53,6 +55,8 @@
     <string name="bookmark_note_label">Note (facultatif)</string>
     <string name="bookmark_saved">Signet enregistré</string>
     <string name="book_progress">Livre : %d%%</string>
+    <string name="book_progress_chapter">Chapitre %1$d sur %2$d · Livre %3$d %%</string>
+    <string name="book_time_left">Il reste %1$s à %2$s</string>
     <string name="play">Lecture</string>
     <string name="pause">Pause</string>
     <string name="rewind_sec">Recul %d s</string>
@@ -64,6 +68,7 @@
     <string name="sleep_badge_chapter">Chap</string>
     <string name="speed_and_audio">Vitesse et audio</string>
     <string name="current_speed">Vitesse actuelle</string>
+    <string name="speed_saved_per_book">Mémorisée pour ce livre</string>
     <string name="quick_presets">Préréglages rapides</string>
     <string name="skip_silence">Ignorer les silences</string>
     <string name="skip_silence_desc">Raccourcir les pauses entre les mots</string>
@@ -74,6 +79,7 @@
     <string name="edit_note">Modifier la note</string>
     <string name="no_bookmarks">Aucun signet pour le moment</string>
     <string name="no_bookmarks_desc">Ajoutez des signets dans le lecteur pour retrouver vos passages préférés.</string>
+    <string name="bookmarks_open_player">Ouvrir le lecteur</string>
     <string name="settings_title">Paramètres</string>
     <string name="settings_subtitle">Personnalisez l\'application selon vos préférences</string>
     <string name="section_appearance">Apparence</string>
@@ -99,6 +105,12 @@
     <string name="fade_on_sleep_desc">Le volume baisse progressivement avant la pause</string>
     <string name="shake_sleep">Secouer pour prolonger</string>
     <string name="shake_sleep_desc">Secouez le téléphone pour ajouter +10 min au minuteur</string>
+    <string name="night_timer">Minuteur de sommeil nocturne</string>
+    <string name="night_timer_desc">Si vous lancez la lecture aux heures choisies, le minuteur de sommeil démarre tout seul</string>
+    <string name="night_timer_from">De</string>
+    <string name="night_timer_to">À</string>
+    <string name="night_timer_length">Durée du minuteur</string>
+    <string name="night_timer_minutes_format">%d min</string>
     <string name="section_audio">Moteur audio</string>
     <string name="default_speed">Vitesse par défaut</string>
     <string name="section_stats">Étagère et statistiques</string>
@@ -130,6 +142,7 @@
     <string name="about_app_desc">Livres audio depuis la mémoire de votre téléphone. Progression, chapitres, signets, minuteur de sommeil et lecteur dans les notifications.</string>
 
     <string name="version_format">Version %s</string>
+    <string name="rate_app">Noter BookVoices sur Google Play</string>
     <string name="seconds_format">%d s</string>
     <string name="minutes_format">%d min</string>
     <string name="btn_start">Commencer</string>
@@ -169,6 +182,8 @@
     <string name="demo_book_title">BookVoices. Introduction</string>
     <string name="demo_book_author">BookVoices</string>
     <string name="import_no_space">Espace insuffisant pour copier le fichier</string>
+    <string name="import_zip_no_audio">L\'archive ne contient aucun fichier audio</string>
+    <string name="import_zip_unreadable">Impossible de lire l\'archive</string>
 
     <string name="unit_hours_short">h</string>
     <string name="unit_minutes_short">min</string>
@@ -176,11 +191,12 @@
     <string name="webdav_err_insecure">Connexion HTTPS requise</string>
     <string name="webdav_err_auth">Identifiant ou mot de passe incorrect</string>
     <string name="webdav_err_rate_limit">Trop de tentatives. Attendez quelques minutes et réessayez</string>
+    <string name="webdav_err_too_large">Le fichier sur le serveur est trop volumineux pour être une sauvegarde BookVoices</string>
     <string name="webdav_err_folder">Dossier introuvable sur le serveur</string>
     <string name="webdav_err_absent">Aucune sauvegarde présente sur le serveur</string>
     <string name="webdav_err_http">Réponse du serveur : HTTP %1$d %2$s</string>
     <string name="webdav_err_network">Impossible de se connecter au serveur</string>
-    <string name="webdav_auth_failed">Synchronisation interrompue : identifiants rejetés.</string>
+    <string name="webdav_auth_failed">Synchronisation interrompue : vérifiez l\'adresse du serveur ou les identifiants, puis touchez Tester.</string>
     <string name="webdav_save_btn">Enregistrer</string>
     <string name="webdav_saved">Paramètres WebDAV enregistrés</string>
     <string name="webdav_password_hint">Laisser vide pour effacer le mot de passe</string>
@@ -212,6 +228,8 @@
     <string name="relink_done">Livre réassocié avec succès</string>
     <string name="relink_partial">%1$d sur %2$d fichiers réassociés</string>
     <string name="relink_failed">Aucun fichier correspondant trouvé dans ce dossier</string>
+    <string name="book_files_gone_label">Fichiers absents</string>
+    <string name="book_files_gone_body">Les fichiers de ce livre ne sont plus disponibles. La progression et les signets sont conservés jusqu\'à la suppression du livre.</string>
 
     <plurals name="book_files_missing_count">
         <item quantity="one">%1$d fichier sur %2$d est introuvable</item>
@@ -262,6 +280,7 @@
     <string name="file_picker_unavailable">Sélecteur de fichiers indisponible</string>
 
     <string name="queue_title">File d\'attente</string>
+    <string name="player_action_queue">File</string>
     <string name="add_to_queue">Ajouter à la file</string>
     <string name="added_to_queue">Ajouté à la file : %s</string>
     <string name="queue_empty">La file d\'attente est vide</string>
@@ -292,6 +311,7 @@
     <string name="smart_rewind_desc">Recul automatique de 5 à 30 s après une longue pause</string>
     <string name="mono_audio">Audio mono</string>
     <string name="mono_audio_desc">Mixer la stéréo en mono pour l\'écoute avec un seul écouteur</string>
+    <string name="headset_actions_summary">2×: %1$s · 3×: %2$s</string>
     <string name="headset_actions">Boutons du casque</string>
     <string name="headset_actions_desc">Par défaut, réagit instantanément à la lecture/pause</string>
     <string name="headset_action_none">Aucune action</string>
@@ -345,6 +365,8 @@
     <string name="export_catalog_total_duration">Durée totale : %s</string>
     <string name="auto_bookmark_bluetooth">Marque-page auto à la déconnexion Bluetooth</string>
     <string name="auto_bookmark_bluetooth_desc">Enregistre automatiquement un marque-page à la déconnexion de la voiture ou des écouteurs</string>
+    <string name="resume_on_reconnect">Reprendre à la reconnexion des écouteurs</string>
+    <string name="resume_on_reconnect_desc">Après une courte déconnexion (jusqu\'à 15 minutes), la lecture reprend quand les écouteurs ou la voiture se reconnectent</string>
     <string name="bookmark_bluetooth_disconnected">Bluetooth déconnecté à %s</string>
     <string name="bookmark_headset_disconnected">Écouteurs déconnectés à %s</string>
     <string name="jump_back_to">Revenir à %s</string>
@@ -367,6 +389,7 @@
     <string name="pro_purchase_success">Merci ! Licence Pro activée</string>
     <string name="pro_purchase_unavailable">Play Store est indisponible pour le moment — réessayez plus tard</string>
     <string name="pro_purchase_failed">Achat non abouti</string>
+    <string name="pro_purchase_pending">Paiement en attente — Pro sera activé dès sa confirmation</string>
     <string name="characters_title">Personnages</string>
     <string name="characters_empty">Aucun personnage ajouté pour le moment</string>
     <string name="add_character">Ajouter un personnage</string>

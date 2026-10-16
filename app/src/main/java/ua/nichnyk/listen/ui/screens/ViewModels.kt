@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
@@ -51,6 +52,14 @@ import ua.nichnyk.listen.playback.PlayerManager
 
 /** Скільки скан доступності файлів лишається чинним без повторного обходу. */
 private const val MISSING_SCAN_TTL_MS = 60_000L
+
+/** Підсумок перепривʼязки словами — спільний для екрана книги й полиці. */
+private fun relinkMessage(app: android.app.Application, result: ua.nichnyk.listen.data.RelinkResult?): String =
+    when {
+        result == null || result.isEmpty -> app.forAppLocale().getString(R.string.relink_failed)
+        result.isComplete -> app.forAppLocale().getString(R.string.relink_done)
+        else -> app.forAppLocale().getString(R.string.relink_partial, result.matched, result.total)
+    }
 
 class LibraryViewModel(
     private val app: Application,
@@ -516,6 +525,17 @@ class LibraryViewModel(
         _pendingRename.value = null
     }
 
+    /**
+     * Перепривʼязка книги з полиці: той самий результат і те саме повідомлення, що й на
+     * екрані книги, але без переходу туди — тап по втраченій книзі вже спитав, що робити.
+     */
+    fun relinkBook(bookId: String, treeUri: Uri) {
+        viewModelScope.launch {
+            val result = runCatching { repo.relinkBook(bookId, treeUri) }.getOrNull()
+            _messages.send(relinkMessage(app, result))
+        }
+    }
+
     fun delete(id: String) {
         viewModelScope.launch {
             runCatching { repo.deleteBook(id) }
@@ -606,6 +626,19 @@ class PlayerViewModel(
             SharingStarted.WhileSubscribed(5_000),
             player.state.value.withoutPosition(),
         )
+
+    /**
+     * Закладки поточної книги — для крапок на смужці перегляду. Підписка живе, поки
+     * плеєр відкритий: без екрана плеєра нікому ці крапки не потрібні.
+     */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val bookmarkMarks: StateFlow<List<ua.nichnyk.listen.data.BookmarkEntity>> = player.state
+        .map { it.book?.book?.id }
+        .distinctUntilChanged()
+        .flatMapLatest { id ->
+            if (id == null) kotlinx.coroutines.flow.flowOf(emptyList()) else repo.observeBookmarksFor(id)
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /** Позиція й прогрес — для смужки перегляду, годинника й кільця на обкладинці. */
     val tick: StateFlow<ua.nichnyk.listen.playback.PlaybackTick> = player.state
@@ -755,8 +788,14 @@ class SettingsViewModel(
 
     fun doubleTapSeek(value: Boolean) = settingWrite("doubleTapSeek") { prefs.setDoubleTapSeek(value) }
     fun autoBookmarkBluetooth(value: Boolean) = settingWrite("autoBookmarkBluetooth") { prefs.setAutoBookmarkBluetooth(value) }
+    fun resumeOnReconnect(value: Boolean) = settingWrite("resumeOnReconnect") { prefs.setResumeOnReconnect(value) }
+    fun nightTimerEnabled(value: Boolean) = settingWrite("nightTimerEnabled") { prefs.setNightTimerEnabled(value) }
+    fun nightTimerStart(minute: Int) = settingWrite("nightTimerStart") { prefs.setNightTimerStart(minute) }
+    fun nightTimerEnd(minute: Int) = settingWrite("nightTimerEnd") { prefs.setNightTimerEnd(minute) }
+    fun nightTimerMinutes(minutes: Int) = settingWrite("nightTimerMinutes") { prefs.setNightTimerMinutes(minutes) }
     fun shakeToExtendSleep(value: Boolean) = settingWrite("shakeSleep") { prefs.setShakeToExtendSleep(value) }
     fun showStatsOnShelf(value: Boolean) = settingWrite("showStats") { prefs.setShowStatsOnShelf(value) }
+    fun historyOpened() = settingWrite("historyOpened") { prefs.setHistoryOpened() }
 
     fun addLibraryRoot(uri: Uri, onResult: (AddLibraryRootResult) -> Unit) {
         launchSafely("SettingsViewModel.addLibraryRoot") {
@@ -1021,12 +1060,7 @@ class BookDetailViewModel(
         viewModelScope.launch {
             try {
                 val result = runCatching { repo.relinkBook(bookId, treeUri) }.getOrNull()
-                val text = when {
-                    result == null || result.isEmpty -> app.forAppLocale().getString(R.string.relink_failed)
-                    result.isComplete -> app.forAppLocale().getString(R.string.relink_done)
-                    else -> app.forAppLocale().getString(R.string.relink_partial, result.matched, result.total)
-                }
-                _messages.send(text)
+                _messages.send(relinkMessage(app, result))
                 val uris = book.value?.chapters?.map { it.uri }?.distinct().orEmpty()
                 _missingFiles.value = uris.count { !repo.isAudioAccessible(it) }
             } finally {
@@ -1138,11 +1172,8 @@ class BookmarksViewModel(
     ) { bookmarks, q ->
         if (q.isBlank()) bookmarks
         else {
-            val term = q.trim().lowercase()
             bookmarks.filter {
-                it.bookTitle.lowercase().contains(term) ||
-                it.bookmark.note.lowercase().contains(term) ||
-                it.bookmark.chapterTitle.lowercase().contains(term)
+                ua.nichnyk.listen.data.SearchText.matches(q, it.bookTitle, it.bookmark.note, it.bookmark.chapterTitle)
             }
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())

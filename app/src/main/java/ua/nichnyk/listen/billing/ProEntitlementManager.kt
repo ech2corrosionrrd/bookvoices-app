@@ -179,7 +179,11 @@ class ProEntitlementManager(
                     // Не authoritative: у колбеку приходить лише те, що змінилося,
                     // тож відсутність Pro тут не означає, що його немає.
                     processPurchases(purchases, authoritative = false)
-                    _events.trySend(BillingEvent.PurchaseSuccess)
+                    val pro = purchases.filter { it.products.contains(SKU_PRO_LIFETIME) }
+                    purchaseEvent(
+                        paid = pro.any { it.purchaseState == Purchase.PurchaseState.PURCHASED },
+                        pending = pro.any { it.purchaseState == Purchase.PurchaseState.PENDING },
+                    )?.let { _events.trySend(it) }
                 }
             }
             BillingClient.BillingResponseCode.USER_CANCELED -> {
@@ -297,8 +301,23 @@ class ProEntitlementManager(
     }
 }
 
+/**
+ * Що сказати користувачу після `onPurchasesUpdated` з непорожнім списком.
+ *
+ * Відкладена оплата (готівкою, з підтвердженням) — це ще не покупка: Pro вмикається
+ * лише зі станом PURCHASED, тож «Дякуємо» тут було б неправдою.
+ */
+internal fun purchaseEvent(paid: Boolean, pending: Boolean): BillingEvent? = when {
+    paid -> BillingEvent.PurchaseSuccess
+    pending -> BillingEvent.PurchasePending
+    else -> null
+}
+
 sealed interface BillingEvent {
     data object PurchaseSuccess : BillingEvent
+
+    /** Оплата ще не підтверджена: Pro увімкнеться, коли Play пришле PURCHASED. */
+    data object PurchasePending : BillingEvent
     data object UserCanceled : BillingEvent
 
     /** Play не віддав деталей товару — купувати нема що. */

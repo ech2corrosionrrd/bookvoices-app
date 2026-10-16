@@ -10,6 +10,7 @@
     <string name="greeting_night">Good night</string>
     <string name="search_placeholder">Title or author</string>
     <string name="close_search">Close search</string>
+    <string name="clear_search_text">Clear search text</string>
     <string name="filter_all">All</string>
     <string name="filter_listening">Listening</string>
     <string name="filter_finished">Finished</string>
@@ -40,6 +41,7 @@
     <string name="delete_book_confirm">Remove book from shelf?</string>
     <string name="empty_shelf_title">Shelf is empty</string>
     <string name="empty_shelf_subtitle">Add audiobooks from device storage or try the demo chapter</string>
+    <string name="empty_shelf_tip">Tip: choose a folder. A folder with audio files becomes one book; a folder of folders becomes several. Name it “Author - Title” to fill in the author automatically.</string>
     <string name="stats_week_title">THIS WEEK</string>
     <string name="stats_today_title">TODAY</string>
     <string name="stats_read_title">COMPLETED</string>
@@ -53,6 +55,8 @@
     <string name="bookmark_note_label">Note (optional)</string>
     <string name="bookmark_saved">Bookmark saved</string>
     <string name="book_progress">Book: %d%%</string>
+    <string name="book_progress_chapter">Chapter %1$d of %2$d · Book %3$d%%</string>
+    <string name="book_time_left">Time left: %1$s at %2$s</string>
     <string name="play">Play</string>
     <string name="pause">Pause</string>
     <string name="rewind_sec">Back %d s</string>
@@ -64,6 +68,7 @@
     <string name="sleep_badge_chapter">Ch</string>
     <string name="speed_and_audio">Playback Speed</string>
     <string name="current_speed">Current speed</string>
+    <string name="speed_saved_per_book">Saved for this book</string>
     <string name="quick_presets">Quick presets</string>
     <string name="skip_silence">Skip silence</string>
     <string name="skip_silence_desc">Shorten silent pauses between words</string>
@@ -74,6 +79,7 @@
     <string name="edit_note">Edit note</string>
     <string name="no_bookmarks">No bookmarks yet</string>
     <string name="no_bookmarks_desc">Add bookmarks in the player to return to your favorite moments.</string>
+    <string name="bookmarks_open_player">Open player</string>
     <string name="settings_title">Settings</string>
     <string name="settings_subtitle">Customize every element for yourself</string>
     <string name="section_appearance">Appearance</string>
@@ -99,6 +105,12 @@
     <string name="fade_on_sleep_desc">Volume will gently fade out before pausing</string>
     <string name="shake_sleep">Shake to extend timer</string>
     <string name="shake_sleep_desc">Gently shake phone to add +10 min to sleep timer</string>
+    <string name="night_timer">Night sleep timer</string>
+    <string name="night_timer_desc">When you start playing between the chosen hours, a sleep timer starts by itself</string>
+    <string name="night_timer_from">From</string>
+    <string name="night_timer_to">Until</string>
+    <string name="night_timer_length">Timer length</string>
+    <string name="night_timer_minutes_format">%d min</string>
     <string name="section_audio">Audio Engine</string>
     <string name="default_speed">Default playback speed</string>
     <string name="section_stats">Shelf &amp; Statistics</string>
@@ -130,6 +142,7 @@
     <string name="about_app_desc">Audiobooks from your device. Progress, chapters, bookmarks, sleep timer and notification player.</string>
 
     <string name="version_format">Version %s</string>
+    <string name="rate_app">Rate BookVoices on Google Play</string>
     <string name="seconds_format">%d s</string>
     <string name="minutes_format">%d min</string>
     <string name="btn_start">Start</string>
@@ -170,6 +183,8 @@
     <string name="demo_book_title">BookVoices. Intro</string>
     <string name="demo_book_author">BookVoices</string>
     <string name="import_no_space">Not enough free space to copy the file</string>
+    <string name="import_zip_no_audio">The archive has no audio files</string>
+    <string name="import_zip_unreadable">Could not read the archive</string>
 
     <string name="unit_hours_short">h</string>
     <string name="unit_minutes_short">min</string>
@@ -178,11 +193,12 @@
     <string name="webdav_err_insecure">HTTPS is required — the password must not travel unencrypted</string>
     <string name="webdav_err_auth">Wrong username or password</string>
     <string name="webdav_err_rate_limit">Too many attempts. Wait a few minutes and try again</string>
+    <string name="webdav_err_too_large">The file on the server is too large to be a BookVoices backup</string>
     <string name="webdav_err_folder">Folder not found — check the path in the server address</string>
     <string name="webdav_err_absent">There is no backup on the server yet</string>
     <string name="webdav_err_http">Server replied: HTTP %1$d %2$s</string>
     <string name="webdav_err_network">Could not reach the server</string>
-    <string name="webdav_auth_failed">Background sync stopped: the server rejected the credentials. Check them and tap Test.</string>
+    <string name="webdav_auth_failed">Background sync stopped: the server settings or credentials need attention. Check them and tap Test.</string>
     <string name="webdav_save_btn">Save</string>
     <string name="webdav_saved">WebDAV details saved</string>
     <string name="webdav_password_hint">An empty field erases the stored password</string>
@@ -223,6 +239,8 @@
          недосяжна. -->
     <string name="relink_partial" tools:ignore="PluralsCandidate">Relinked %1$d of %2$d files</string>
     <string name="relink_failed">No files from this book were found in that folder</string>
+    <string name="book_files_gone_label">Files missing</string>
+    <string name="book_files_gone_body">This book\'s files are no longer available. Progress and bookmarks stay until you remove the book.</string>
 
     <!-- Wave A (A1-A6) -->
     <plurals name="book_files_missing_count">
@@ -277,6 +295,7 @@
 
     <!-- Wave B (B1-B5) -->
     <string name="queue_title">Up Next Queue</string>
+    <string name="player_action_queue">Queue</string>
     <string name="add_to_queue">Play next</string>
     <string name="added_to_queue">Added to queue: %s</string>
     <string name="queue_empty">Queue is empty</string>
@@ -309,6 +328,7 @@
     <string name="smart_rewind_desc">Automatically rewind 5–30s after long pauses</string>
     <string name="mono_audio">Mono Audio</string>
     <string name="mono_audio_desc">Downmix stereo to mono for single-earbud listening</string>
+    <string name="headset_actions_summary">2×: %1$s · 3×: %2$s</string>
     <string name="headset_actions">Headset Actions</string>
     <string name="headset_actions_desc">While both actions are “nothing”, the button behaves as usual and pause responds instantly. Any other choice makes it wait about a third of a second for a second press</string>
     <string name="headset_action_none">Nothing</string>
@@ -364,6 +384,8 @@
     <string name="export_catalog_total_duration">Total duration: %s</string>
     <string name="auto_bookmark_bluetooth">Auto-bookmark on Bluetooth disconnect</string>
     <string name="auto_bookmark_bluetooth_desc">Automatically save a bookmark when car or headphones disconnect</string>
+    <string name="resume_on_reconnect">Resume when headphones reconnect</string>
+    <string name="resume_on_reconnect_desc">After a short disconnect (up to 15 minutes), continue playing when headphones or the car connect again</string>
     <string name="bookmark_bluetooth_disconnected">Bluetooth disconnected at %s</string>
     <string name="bookmark_headset_disconnected">Headphones disconnected at %s</string>
     <string name="jump_back_to">Jump back to %s</string>
@@ -386,6 +408,7 @@
     <string name="pro_purchase_success">Thank you! Pro license activated</string>
     <string name="pro_purchase_unavailable">Play Store is unavailable right now — try again later</string>
     <string name="pro_purchase_failed">Purchase was not completed</string>
+    <string name="pro_purchase_pending">Payment is pending — Pro will turn on once it is confirmed</string>
     <string name="characters_title">Characters</string>
     <string name="characters_empty">No characters added yet</string>
     <string name="add_character">Add character</string>

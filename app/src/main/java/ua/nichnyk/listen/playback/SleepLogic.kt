@@ -31,3 +31,33 @@ fun sleepBadgeMinutes(remainingMs: Long, minuteMs: Long = 60_000L): Int {
     if (remainingMs <= 0L) return 0
     return ((remainingMs + minuteMs - 1) / minuteMs).toInt()
 }
+
+/**
+ * Чи потрапляє [nowMinute] (хвилина доби, 0..1439) у нічне вікно [startMinute]..[endMinute].
+ *
+ * Вікно може переходити через північ (22:00–06:00). Однакові початок і кінець —
+ * порожнє вікно, а не «цілодобово»: так випадково незаповнений розклад нічого не вмикає.
+ * Початок входить у вікно, кінець — ні.
+ */
+fun isInNightWindow(nowMinute: Int, startMinute: Int, endMinute: Int): Boolean {
+    if (startMinute == endMinute) return false
+    return if (startMinute < endMinute) {
+        nowMinute in startMinute until endMinute
+    } else {
+        nowMinute >= startMinute || nowMinute < endMinute
+    }
+}
+
+/**
+ * Чи заводити нічний таймер сну, коли відтворення щойно почалося.
+ *
+ * Лише якщо ним ніхто не керує: заведений користувачем таймер (хоч у якому режимі)
+ * важить більше за розклад і не перезаписується.
+ */
+fun shouldStartNightTimer(
+    enabled: Boolean,
+    timerActive: Boolean,
+    nowMinute: Int,
+    startMinute: Int,
+    endMinute: Int,
+): Boolean = enabled && !timerActive && isInNightWindow(nowMinute, startMinute, endMinute)

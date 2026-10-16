@@ -1,6 +1,8 @@
 package ua.nichnyk.listen.ui.screens
 
 import android.content.ClipData
+import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
@@ -24,8 +26,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.outlined.CloudDownload
 import androidx.compose.material.icons.outlined.CloudUpload
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilledTonalButton
@@ -49,6 +54,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.semantics.Role
+import androidx.compose.runtime.saveable.rememberSaveable
 
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -308,30 +315,60 @@ fun SettingsScreen(
         }
 
         Spacer(Modifier.height(Spacing.m))
-        Text(stringResource(R.string.headset_actions), style = MaterialTheme.typography.titleMedium)
-        Text(
-            stringResource(R.string.headset_actions_desc),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        // Розгорнуто лише на вимогу: два ряди по сім чіпів і абзац пояснення — це
+        // половина екрана заради налаштування, яке чіпають одиниці. Згорнутий
+        // рядок показує поточний вибір, тож зайвий раз розгортати його не треба.
+        var headsetExpanded by rememberSaveable { mutableStateOf(false) }
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clickable(role = Role.Button) { headsetExpanded = !headsetExpanded },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(R.string.headset_actions), style = MaterialTheme.typography.titleMedium)
+                if (!headsetExpanded) {
+                    Text(
+                        stringResource(
+                            R.string.headset_actions_summary,
+                            headsetActionLabel(s.headsetDoubleTapAction, s.skipForwardMs, s.skipBackMs),
+                            headsetActionLabel(s.headsetTripleTapAction, s.skipForwardMs, s.skipBackMs),
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            Icon(
+                if (headsetExpanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                contentDescription = null,
+            )
+        }
+        if (headsetExpanded) {
+            Text(
+                stringResource(R.string.headset_actions_desc),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
 
-        Spacer(Modifier.height(Spacing.s))
-        HeadsetActionPicker(
-            title = stringResource(R.string.headset_double_tap),
-            selected = s.headsetDoubleTapAction,
-            skipForwardMs = s.skipForwardMs,
-            skipBackMs = s.skipBackMs,
-            onSelect = vm::headsetDoubleTap,
-        )
+            Spacer(Modifier.height(Spacing.s))
+            HeadsetActionPicker(
+                title = stringResource(R.string.headset_double_tap),
+                selected = s.headsetDoubleTapAction,
+                skipForwardMs = s.skipForwardMs,
+                skipBackMs = s.skipBackMs,
+                onSelect = vm::headsetDoubleTap,
+            )
 
-        Spacer(Modifier.height(Spacing.m))
-        HeadsetActionPicker(
-            title = stringResource(R.string.headset_triple_tap),
-            selected = s.headsetTripleTapAction,
-            skipForwardMs = s.skipForwardMs,
-            skipBackMs = s.skipBackMs,
-            onSelect = vm::headsetTripleTap,
-        )
+            Spacer(Modifier.height(Spacing.m))
+            HeadsetActionPicker(
+                title = stringResource(R.string.headset_triple_tap),
+                selected = s.headsetTripleTapAction,
+                skipForwardMs = s.skipForwardMs,
+                skipBackMs = s.skipBackMs,
+                onSelect = vm::headsetTripleTap,
+            )
+        }
 
         Spacer(Modifier.height(Spacing.m))
         Row(
@@ -347,6 +384,19 @@ fun SettingsScreen(
                 )
             }
             Switch(checked = s.autoBookmarkBluetooth, onCheckedChange = vm::autoBookmarkBluetooth, enabled = isPro)
+        }
+
+        Spacer(Modifier.height(Spacing.m))
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(R.string.resume_on_reconnect), style = MaterialTheme.typography.titleMedium)
+                Text(
+                    stringResource(R.string.resume_on_reconnect_desc),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(checked = s.resumeOnReconnect, onCheckedChange = vm::resumeOnReconnect)
         }
 
         Spacer(Modifier.height(Spacing.xxl))
@@ -372,6 +422,57 @@ fun SettingsScreen(
                 Text(stringResource(R.string.shake_sleep_desc), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Switch(checked = s.shakeToExtendSleep, onCheckedChange = vm::shakeToExtendSleep)
+        }
+
+        Spacer(Modifier.height(Spacing.m))
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(R.string.night_timer), style = MaterialTheme.typography.titleMedium)
+                Text(
+                    stringResource(R.string.night_timer_desc),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(checked = s.nightTimerEnabled, onCheckedChange = vm::nightTimerEnabled)
+        }
+        if (s.nightTimerEnabled) {
+            Spacer(Modifier.height(Spacing.s))
+            Text(stringResource(R.string.night_timer_from), style = MaterialTheme.typography.titleSmall)
+            Spacer(Modifier.height(Spacing.xs))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
+                listOf(21 * 60, 22 * 60, 23 * 60, 0).forEach { minute ->
+                    FilterChip(
+                        selected = s.nightTimerStartMinute == minute,
+                        onClick = { vm.nightTimerStart(minute) },
+                        label = { Text(clockLabel(minute)) },
+                    )
+                }
+            }
+            Spacer(Modifier.height(Spacing.s))
+            Text(stringResource(R.string.night_timer_to), style = MaterialTheme.typography.titleSmall)
+            Spacer(Modifier.height(Spacing.xs))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
+                listOf(5 * 60, 6 * 60, 7 * 60, 8 * 60).forEach { minute ->
+                    FilterChip(
+                        selected = s.nightTimerEndMinute == minute,
+                        onClick = { vm.nightTimerEnd(minute) },
+                        label = { Text(clockLabel(minute)) },
+                    )
+                }
+            }
+            Spacer(Modifier.height(Spacing.s))
+            Text(stringResource(R.string.night_timer_length), style = MaterialTheme.typography.titleSmall)
+            Spacer(Modifier.height(Spacing.xs))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
+                listOf(15, 30, 45, 60).forEach { minutes ->
+                    FilterChip(
+                        selected = s.nightTimerMinutes == minutes,
+                        onClick = { vm.nightTimerMinutes(minutes) },
+                        label = { Text(stringResource(R.string.night_timer_minutes_format, minutes)) },
+                    )
+                }
+            }
         }
 
         Spacer(Modifier.height(Spacing.xxl))
@@ -588,7 +689,12 @@ fun SettingsScreen(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.height(Spacing.m))
-        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.m)) {
+        // FlowRow, а не Row: при великому шрифті кнопки не вміщаються поруч, і Row стискав другу
+        // до ширини однієї літери («R / e / s / t…»). Тепер вона йде на новий рядок.
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(Spacing.m),
+            verticalArrangement = Arrangement.spacedBy(Spacing.s),
+        ) {
             FilledTonalButton(
                 onClick = {
                     scope.launch {
@@ -708,14 +814,16 @@ fun SettingsScreen(
             modifier = Modifier.fillMaxWidth(),
         )
         Spacer(Modifier.height(Spacing.s))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
+        // Одне під одним: у півширини підпис «Username»/«Password» при великому шрифті обрізався
+        // («Usernam|e»), а повна ширина вміщає його завжди.
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
             OutlinedTextField(
                 value = davUser,
                 onValueChange = { davUser = it },
                 label = { Text(stringResource(R.string.webdav_username)) },
                 singleLine = true,
                 enabled = davLoaded,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.fillMaxWidth(),
             )
             OutlinedTextField(
                 value = davPass,
@@ -724,7 +832,7 @@ fun SettingsScreen(
                 singleLine = true,
                 enabled = davLoaded,
                 visualTransformation = PasswordVisualTransformation(),
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.fillMaxWidth(),
             )
         }
         Text(
@@ -870,6 +978,12 @@ fun SettingsScreen(
         )
         Spacer(Modifier.height(Spacing.s))
         Text(stringResource(R.string.version_format, ua.nichnyk.listen.BuildConfig.VERSION_NAME), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(Spacing.s))
+        OutlinedButton(onClick = { openPlayListing(context) }) {
+            Icon(Icons.Outlined.Star, contentDescription = null)
+            Spacer(Modifier.width(Spacing.xs))
+            Text(stringResource(R.string.rate_app))
+        }
 
         // Лише debug: Play Billing відповідає тільки застосунку, встановленому з
         // Play, тож у сайдлоуд-збірці платні екрани інакше не відкрити. У release
@@ -934,20 +1048,39 @@ private fun HeadsetActionPicker(
     Spacer(Modifier.height(Spacing.xs))
     FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.s), verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
         HeadsetAction.entries.forEach { action ->
-            val label = when (action) {
-                HeadsetAction.NONE -> stringResource(R.string.headset_action_none)
-                HeadsetAction.PLAY_PAUSE -> stringResource(R.string.headset_action_play_pause)
-                HeadsetAction.FORWARD -> stringResource(R.string.forward_sec, skipForwardMs / 1000)
-                HeadsetAction.REWIND -> stringResource(R.string.rewind_sec, skipBackMs / 1000)
-                HeadsetAction.NEXT_CHAPTER -> stringResource(R.string.headset_action_next_chapter)
-                HeadsetAction.PREVIOUS_CHAPTER -> stringResource(R.string.headset_action_prev_chapter)
-                HeadsetAction.BOOKMARK -> stringResource(R.string.headset_action_bookmark)
-            }
             FilterChip(
                 selected = selected == action,
                 onClick = { onSelect(action) },
-                label = { Text(label) },
+                label = { Text(headsetActionLabel(action, skipForwardMs, skipBackMs)) },
             )
         }
     }
 }
+
+@Composable
+private fun headsetActionLabel(action: HeadsetAction, skipForwardMs: Int, skipBackMs: Int): String =
+    when (action) {
+        HeadsetAction.NONE -> stringResource(R.string.headset_action_none)
+        HeadsetAction.PLAY_PAUSE -> stringResource(R.string.headset_action_play_pause)
+        HeadsetAction.FORWARD -> stringResource(R.string.forward_sec, skipForwardMs / 1000)
+        HeadsetAction.REWIND -> stringResource(R.string.rewind_sec, skipBackMs / 1000)
+        HeadsetAction.NEXT_CHAPTER -> stringResource(R.string.headset_action_next_chapter)
+        HeadsetAction.PREVIOUS_CHAPTER -> stringResource(R.string.headset_action_prev_chapter)
+        HeadsetAction.BOOKMARK -> stringResource(R.string.headset_action_bookmark)
+    }
+
+/** Сторінка застосунку в Play: напряму через `market://`, а без Play Маркету — у браузері. */
+private fun openPlayListing(context: Context) {
+    val id = context.packageName
+    val market = Intent(Intent.ACTION_VIEW, "market://details?id=$id".toUri())
+    val web = Intent(Intent.ACTION_VIEW, "https://play.google.com/store/apps/details?id=$id".toUri())
+    try {
+        context.startActivity(market)
+    } catch (_: ActivityNotFoundException) {
+        runCatching { context.startActivity(web) }
+    }
+}
+
+/** «22:00» із хвилини доби; 24-годинний запис однаковий в усіх локалях застосунку. */
+private fun clockLabel(minuteOfDay: Int): String =
+    String.format(java.util.Locale.ROOT, "%02d:%02d", minuteOfDay / 60, minuteOfDay % 60)

@@ -132,15 +132,7 @@ class LibraryRepository(
         // Користувач явно вказав цю теку в діалозі — авто-скан лише в ній,
         // навіть якщо fromTree знайшов вкладені групи.
         val folderDocId = runCatching { DocumentsContract.getTreeDocumentId(treeUri) }.getOrNull()
-        val current = dao.getBook(bookId)
-        if (current != null) {
-            dao.updateBook(
-                current.book.copy(
-                    sourceTreeUri = treeUri.toString(),
-                    sourceFolderDocId = folderDocId,
-                ),
-            )
-        }
+        dao.updateSource(bookId, treeUri.toString(), folderDocId)
         return added
     }
 
@@ -167,6 +159,7 @@ class LibraryRepository(
         val candidates = runCatching {
             importer.listAudioFiles(treeUri, book.book.sourceFolderDocId)
         }.getOrElse {
+            if (it is kotlinx.coroutines.CancellationException) throw it
             AppLog.w("LibraryRepository.scanNewAudioInSourceTree", it)
             return emptyList()
         }
@@ -188,6 +181,7 @@ class LibraryRepository(
             val treeUri = root.toUri()
             if (!importer.isTreePermissionGranted(treeUri)) continue
             val candidates = runCatching { importer.listBookCandidates(treeUri) }.getOrElse {
+                if (it is kotlinx.coroutines.CancellationException) throw it
                 AppLog.w("LibraryRepository.scanNewBooksInLibraryRoots", it)
                 emptyList()
             }
@@ -218,6 +212,8 @@ class LibraryRepository(
                     onProgress = onProgress,
                 )
             }.getOrElse {
+                // Скасування імпорту зупиняє цикл, а не стає «ще одним невдалим кандидатом».
+                if (it is kotlinx.coroutines.CancellationException) throw it
                 AppLog.w("LibraryRepository.importLibraryCandidates", it)
                 null
             } ?: continue
@@ -255,12 +251,10 @@ class LibraryRepository(
             )
         }
         val addedDuration = entities.sumOf { it.durationMs }
-        val updatedBook = book.book.copy(
-            durationMs = book.book.durationMs + addedDuration,
-            completed = if (addedDuration > 0) false else book.book.completed,
-        )
-        dao.upsertChapters(entities)
-        dao.updateBook(updatedBook)
+        db.withTransaction {
+            dao.upsertChapters(entities)
+            dao.extendBook(bookId, addedDuration)
+        }
         withContext(Dispatchers.Main) { onBookFilesChanged(bookId) }
         return entities.size
     }
@@ -445,24 +439,28 @@ class LibraryRepository(
             )
         }
         val duration = chapters.sumOf { it.durationMs }
-        dao.upsertBook(
-            BookEntity(
-                id = id,
-                title = draft.title,
-                author = draft.author,
-                coverPath = cover,
-                addedAt = System.currentTimeMillis(),
-                lastPlayedAt = null,
-                durationMs = duration,
-                positionMs = 0,
-                currentChapterIndex = 0,
-                playbackSpeed = 1f,
-                completed = false,
-                sourceTreeUri = draft.sourceTreeUri,
-                sourceFolderDocId = draft.sourceFolderDocId,
+        // В одній транзакції: скасування імпорту чи вбитий процес між двома записами
+        // лишили б на полиці книгу без жодного розділу.
+        db.withTransaction {
+            dao.upsertBook(
+                BookEntity(
+                    id = id,
+                    title = draft.title,
+                    author = draft.author,
+                    coverPath = cover,
+                    addedAt = System.currentTimeMillis(),
+                    lastPlayedAt = null,
+                    durationMs = duration,
+                    positionMs = 0,
+                    currentChapterIndex = 0,
+                    playbackSpeed = 1f,
+                    completed = false,
+                    sourceTreeUri = draft.sourceTreeUri,
+                    sourceFolderDocId = draft.sourceFolderDocId,
+                )
             )
-        )
-        dao.upsertChapters(chapters)
+            dao.upsertChapters(chapters)
+        }
         return PendingRename(id, draft.title, draft.author)
     }
 
@@ -494,16 +492,15 @@ class LibraryRepository(
         } else {
             book.coverPath
         }
-        dao.updateBook(
-            book.copy(
-                title = newTitle,
-                author = newAuthor,
-                coverPath = cover,
-                // Мітка часу лише коли назва чи автор справді змінилися: діалог,
-                // закритий кнопкою «Зберегти» без правок, не має вигравати
-                // арбітраж проти пристрою, де перейменування було справжнім.
-                renamedAt = if (changed) System.currentTimeMillis() else book.renamedAt,
-            ),
+        dao.updateIdentity(
+            bookId = id,
+            title = newTitle,
+            author = newAuthor,
+            coverPath = cover,
+            // Мітка часу лише коли назва чи автор справді змінилися: діалог,
+            // закритий кнопкою «Зберегти» без правок, не має вигравати
+            // арбітраж проти пристрою, де перейменування було справжнім.
+            renamedAt = if (changed) System.currentTimeMillis() else book.renamedAt,
         )
     }
 
@@ -524,17 +521,14 @@ class LibraryRepository(
         completed: Boolean? = null,
         touchLastPlayed: Boolean = true,
     ) {
-        val current = dao.getBook(bookId) ?: return
-        val duration = if (current.book.durationMs > 0) current.book.durationMs else durationHint
-        dao.updateBook(
-            current.book.copy(
-                currentChapterIndex = chapterIndex,
-                positionMs = positionMs.coerceAtLeast(0L),
-                lastPlayedAt = if (touchLastPlayed) System.currentTimeMillis() else current.book.lastPlayedAt,
-                durationMs = duration,
-                playbackSpeed = speed,
-                completed = completed ?: current.book.completed,
-            )
+        dao.updateProgress(
+            bookId = bookId,
+            chapterIndex = chapterIndex,
+            positionMs = positionMs.coerceAtLeast(0L),
+            lastPlayedAt = if (touchLastPlayed) System.currentTimeMillis() else null,
+            durationHint = durationHint,
+            speed = speed,
+            completed = completed,
         )
     }
 
@@ -552,12 +546,10 @@ class LibraryRepository(
      */
     suspend fun repairChapterDuration(chapterId: String, durationMs: Long) {
         if (durationMs <= 0L) return
-        val book = dao.getBookForChapter(chapterId) ?: return
-        val chapter = book.chapters.firstOrNull { it.id == chapterId } ?: return
-        if (chapter.durationMs > 0L) return
-        dao.upsertChapters(listOf(chapter.copy(durationMs = durationMs)))
-        val total = book.chapters.sumOf { if (it.id == chapterId) durationMs else it.durationMs }
-        dao.updateBook(book.book.copy(durationMs = total))
+        val bookId = dao.getBookForChapter(chapterId)?.book?.id ?: return
+        db.withTransaction {
+            if (dao.fillChapterDuration(chapterId, durationMs) > 0) dao.recomputeBookDuration(bookId)
+        }
     }
 
     suspend fun addBookmark(bookId: String, chapter: ChapterEntity, positionMs: Long, note: String) {
@@ -635,14 +627,11 @@ class LibraryRepository(
 
         val updated = chapters.mapNotNull { ch -> mapping[ch.uri]?.let { ch.copy(uri = it) } }
         if (updated.isNotEmpty()) {
-            dao.upsertChapters(updated)
             val folderDocId = runCatching { DocumentsContract.getTreeDocumentId(treeUri) }.getOrNull()
-            dao.updateBook(
-                book.book.copy(
-                    sourceTreeUri = treeUri.toString(),
-                    sourceFolderDocId = folderDocId,
-                ),
-            )
+            db.withTransaction {
+                dao.upsertChapters(updated)
+                dao.updateSource(bookId, treeUri.toString(), folderDocId)
+            }
             // Черга плеєра ще тримає старі адреси — вона більше не відповідає книзі.
             withContext(Dispatchers.Main) { onBookFilesChanged(bookId) }
         }
@@ -705,10 +694,14 @@ class LibraryRepository(
     suspend fun deleteBook(id: String) {
         withContext(Dispatchers.Main) { onBookDeleted(id) }
         val current = dao.getBook(id)
+        // Спершу база, потім файли: якщо запис не вдасться, книга лишається цілою, а не
+        // без обкладинки й копій аудіо. Так само робить злиття з хмарою.
+        db.withTransaction {
+            dao.deleteBook(id)
+            // Надгробок їде в бекап, інакше книга повернеться з хмари наступним злиттям.
+            dao.upsertTombstone(DeletedBookEntity(id, System.currentTimeMillis()))
+        }
         releaseBookFiles(current)
-        dao.deleteBook(id)
-        // Надгробок їде в бекап, інакше книга повернеться з хмари наступним злиттям.
-        dao.upsertTombstone(DeletedBookEntity(id, System.currentTimeMillis()))
         pruneTombstones()
     }
 
@@ -884,6 +877,14 @@ class LibraryRepository(
                 .onFailure { AppLog.w("importBackupJson: файл не є бекапом BookVoices", it) }
                 .getOrNull()
         } ?: return false
+        // Файл, у якому є записи книг, але жоден не придатний (чужий JSON з полем «books»,
+        // зіпсований файл), не може стати «заміною полиці»: порожній результат стер би
+        // наявні книги заради нічого. Порожній масив «books» — це справжня порожня копія.
+        val rawBooks = runCatching { org.json.JSONObject(jsonStr).optJSONArray("books")?.length() ?: 0 }.getOrDefault(0)
+        if (rawBooks > 0 && payload.books.isEmpty()) {
+            AppLog.w("importBackupJson: у файлі $rawBooks записів книг, жоден непридатний — полицю не чіпаємо")
+            return false
+        }
         // Черга в бекап не їде — вона про цей телефон, а не про полицю. Але
         // replaceAll стирає книги, і queue_items порожніє за ним через CASCADE:
         // список «далі» зникав після кожного відновлення, навіть коли всі його
@@ -1110,13 +1111,7 @@ class LibraryRepository(
      * жодної позначки часу виглядала б у машині як «не починали».
      */
     suspend fun setCompleted(bookId: String, completed: Boolean) {
-        val current = dao.getBook(bookId) ?: return
-        dao.updateBook(
-            current.book.copy(
-                completed = completed,
-                lastPlayedAt = current.book.lastPlayedAt ?: System.currentTimeMillis(),
-            ),
-        )
+        dao.updateCompleted(bookId, completed, System.currentTimeMillis())
     }
 
     suspend fun batchSetPinned(bookIds: List<String>, pinned: Boolean) {
@@ -1141,7 +1136,21 @@ class LibraryRepository(
       * а вони поштучні в будь-якому разі.
       */
     suspend fun batchDeleteBooks(bookIds: List<String>) {
-        bookIds.forEach { id -> deleteBook(id) }
+        // Збій на одній книзі (файл не видалився, плеєр не зупинився) не має зупиняти решту: інакше
+        // «видалити 20 книг» мовчки видаляло 7 і зупинялось, а виняток губився в launchSafely.
+        var firstFailure: Throwable? = null
+        for (id in bookIds) {
+            try {
+                deleteBook(id)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                AppLog.w("batchDeleteBooks: книгу $id не вдалося видалити, ідемо далі", e)
+                if (firstFailure == null) firstFailure = e
+            }
+        }
+        // Про збій усе одно повідомляємо — але після того, як спробували всіх.
+        firstFailure?.let { throw it }
     }
 
     suspend fun batchAssignTag(bookIds: List<String>, tag: String) {

@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.channels.Channel
+import ua.nichnyk.listen.data.AvailabilityCache
 import ua.nichnyk.listen.data.AudioImporter
 import ua.nichnyk.listen.data.CoverGenerator
 import ua.nichnyk.listen.data.DemoFactory
@@ -48,10 +49,20 @@ class AppContainer(private val app: Application) {
     )
     val player = PlayerManager(app, repo, prefs)
 
+    /**
+     * Доступність файлів для списків Android Auto. `var` — шов для інструментальних
+     * тестів: фікстури там мають вигадані адреси, яких на диску немає.
+     */
+    var availability = AvailabilityCache(repo::inaccessibleUris)
+
     init {
         repo.onBookDeleted = player::clearIfCurrent
         repo.onLibraryReset = player::resetPlayback
-        repo.onBookFilesChanged = player::clearIfCurrent
+        repo.onBookFilesChanged = { id ->
+            player.clearIfCurrent(id, forgetLast = false)
+            // Після перепривʼязки стара відповідь «файлів немає» вже неправдива.
+            availability.invalidate()
+        }
         repo.onQueueChangedExternally = player::reloadQueue
     }
 

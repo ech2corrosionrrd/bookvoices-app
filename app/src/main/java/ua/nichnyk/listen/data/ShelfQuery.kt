@@ -30,7 +30,6 @@ object ShelfQuery {
         selectedSeries: String? = null,
         missingBookIds: Set<String> = emptySet(),
     ): List<BookWithChapters> {
-        val q = query.trim().lowercase()
         return books.filter { item ->
             val matchesFilter = when (filter) {
                 LibraryFilter.All -> true
@@ -40,10 +39,9 @@ object ShelfQuery {
             }
             val matchesTag = selectedTag == null || bookTagsMap[item.book.id]?.contains(selectedTag) == true
             val matchesSeries = selectedSeries == null || item.book.series.equals(selectedSeries, ignoreCase = true)
-            val matchesQuery = q.isEmpty() ||
-                item.book.title.lowercase().contains(q) ||
-                item.book.author.lowercase().contains(q) ||
-                item.book.series?.lowercase()?.contains(q) == true
+            // Спільний пошук (SearchText): без регістру, діакритики, «ё», апострофів і розділових
+            // знаків; усі слова запиту мають зустрітися в назві, авторі чи циклі.
+            val matchesQuery = SearchText.matches(query, item.book.title, item.book.author, item.book.series)
             matchesFilter && matchesTag && matchesSeries && matchesQuery
         }
     }

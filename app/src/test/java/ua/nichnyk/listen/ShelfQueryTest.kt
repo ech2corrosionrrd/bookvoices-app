@@ -58,6 +58,26 @@ class ShelfQueryTest {
 
     private fun ids(list: List<BookWithChapters>) = list.map { it.book.id }
 
+    @Test
+    fun searchMatchesAcrossTitleAndAuthorIgnoringYoApostropheAndPunctuation() {
+        val books = listOf(
+            book("a", "Кобзар", author = "Тарас Шевченко"),
+            book("b", "Всё о книге", author = "Автор"),
+            book("c", "Прив’яз", author = "Автор"),
+            book("d", "Інша книга", author = "Франко"),
+        )
+        fun found(q: String) = ids(ShelfQuery.filter(books, q, LibraryFilter.All))
+
+        // назва + автор в одному запиті
+        assertEquals(listOf("a"), found("кобзар шевченко"))
+        // «ё» і «е» — одна літера
+        assertEquals(listOf("b"), found("все"))
+        // апострофи різних видів і розділові знаки
+        assertEquals(listOf("c"), found("прив'яз!"))
+        // порожній запит нічого не відсіює
+        assertEquals(listOf("a", "b", "c", "d"), found("  "))
+    }
+
     private val shelf = listOf(
         book("a", "Кобзар", author = "Шевченко", lastPlayedAt = 300L, addedAt = 10L),
         book("b", "Місто", author = "Підмогильний", lastPlayedAt = null, addedAt = 30L),

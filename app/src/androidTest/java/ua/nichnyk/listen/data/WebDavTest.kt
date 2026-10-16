@@ -207,6 +207,47 @@ class WebDavTest {
         assertEquals(1, db.library().getAllBooks().size)
     }
 
+    /**
+     * Редирект на інший сервер не повинен віднести туди пароль. Другий екземпляр сервера на
+     * іншому порту — для клієнта це інше джерело, як чужий хост.
+     */
+    @Test
+    fun redirectToAnotherOriginDoesNotLeakTheCredentials() = runBlocking {
+        val other = FakeWebDavServer()
+        other.start(InstrumentationRegistry.getInstrumentation().context)
+        try {
+            other.put("/dav/bookvoices_sync.json", """{"books":[]}""")
+            other.expectedUser = "someone-else"
+            server.redirectGetTo = other.url("/dav/bookvoices_sync.json")
+
+            val result = WebDavClient.downloadFile(server.url(), user, password)
+
+            // Без цього тест нічого б не доводив: якщо редирект узагалі не виконувався, «витоку немає»
+            // було б хибним спокоєм. Інший сервер мав справді отримати запит.
+            assertTrue("редирект не дійшов до іншого сервера — тест порожній", other.requestCount >= 1)
+            // Хоч би чим завершилась спроба, чужий сервер не мав побачити Basic-заголовок.
+            val leaked = other.seenAuthorizations.filterNotNull()
+            assertTrue("пароль пішов на інший сервер: $leaked (результат: $result)", leaked.isEmpty())
+        } finally {
+            other.stop()
+        }
+    }
+
+    /** Сервер, що віддає нескінченно велику відповідь, не може вичерпати пам'ять застосунку. */
+    @Test
+    fun oversizedBackupResponseIsRejectedInsteadOfReadIntoMemory() = runBlocking {
+        // 40 МБ: більше за будь-яку справжню копію (кілька сотень КБ навіть на тисячу книг).
+        server.putBytes("/dav/bookvoices_sync.json", ByteArray(40 * 1024 * 1024) { 'x'.code.toByte() })
+
+        val result = WebDavClient.downloadFile(server.url(), user, password)
+
+        assertTrue("завелика відповідь мала бути відхилена", result.isFailure)
+        assertTrue(
+            "очікувалась WebDavError.TooLarge, отримано ${result.exceptionOrNull()}",
+            result.exceptionOrNull() is WebDavError.TooLarge,
+        )
+    }
+
     @Test
     fun emptyPasswordStillSendsCredentials() = runBlocking {
         // Частина серверів приймає порожній пароль із логіном — заголовок має піти.

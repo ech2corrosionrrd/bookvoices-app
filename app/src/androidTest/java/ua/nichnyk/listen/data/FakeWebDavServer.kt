@@ -36,6 +36,15 @@ class FakeWebDavServer {
     /** Код, який сервер поверне замість нормальної обробки (для перевірки помилок). */
     var forcedStatus: Int? = null
 
+    /** Якщо задано, на GET сервер відповідає 302 з цією адресою (перевірка редиректів і витоку облікових даних). */
+    var redirectGetTo: String? = null
+
+    /** Заголовки Authorization усіх прийнятих запитів, за порядком; `null` — заголовка не було. */
+    val seenAuthorizations = java.util.concurrent.CopyOnWriteArrayList<String?>()
+
+    /** Скільки запитів прийнято (будь-яких). */
+    val requestCount: Int get() = seenAuthorizations.size
+
     val port: Int get() = serverSocket.localPort
     fun url(path: String = "/dav/"): String = "https://localhost:$port$path"
 
@@ -82,6 +91,10 @@ class FakeWebDavServer {
         files[path] = body.toByteArray(Charsets.UTF_8)
     }
 
+    fun putBytes(path: String, body: ByteArray) {
+        files[path] = body
+    }
+
     fun get(path: String): String? = files[path]?.toString(Charsets.UTF_8)
 
     private fun handle(socket: SSLSocket) {
@@ -115,6 +128,13 @@ class FakeWebDavServer {
             }
 
             val out = socket.getOutputStream()
+            seenAuthorizations += authorization
+            if (method == "GET") {
+                redirectGetTo?.let {
+                    respond(out, 302, "Found", extraHeaders = "Location: $it\r\n")
+                    return
+                }
+            }
             forcedStatus?.let {
                 respond(out, it, "Forced")
                 return
@@ -146,9 +166,16 @@ class FakeWebDavServer {
         return decoded == "$expectedUser:$expectedPassword"
     }
 
-    private fun respond(out: OutputStream, code: Int, message: String, body: ByteArray = ByteArray(0)) {
+    private fun respond(
+        out: OutputStream,
+        code: Int,
+        message: String,
+        body: ByteArray = ByteArray(0),
+        extraHeaders: String = "",
+    ) {
         val header = buildString {
             append("HTTP/1.1 $code $message\r\n")
+            append(extraHeaders)
             append("Content-Length: ${body.size}\r\n")
             append("Content-Type: application/json\r\n")
             append("Connection: close\r\n\r\n")

@@ -16,6 +16,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
@@ -112,6 +113,109 @@ class LibraryRepositoryTest {
                 ),
             ),
         )
+    }
+
+    // --- точкові оновлення книги -------------------------------------------
+
+    @Test
+    fun saveProgressDoesNotTouchOtherFields() = runTest {
+        insertBook("p", title = "Назва")
+        repo.setPinned("p", true)
+        repo.updateSeries("p", "Цикл", 2f)
+        repo.saveProgress("p", chapterIndex = 3, positionMs = 42_000L, durationHint = 9_999L, speed = 1.5f)
+        val b = db.library().getBook("p")!!.book
+        assertEquals(3, b.currentChapterIndex)
+        assertEquals(42_000L, b.positionMs)
+        assertEquals(1.5f, b.playbackSpeed, 0.001f)
+        assertTrue(b.pinned)
+        assertEquals("Цикл", b.series)
+        assertEquals("Назва", b.title)
+        // Своя тривалість (1000) важить більше за підказку.
+        assertEquals(1000L, b.durationMs)
+        assertNotNull(b.lastPlayedAt)
+    }
+
+    @Test
+    fun saveProgressWithoutTouchKeepsLastPlayedAndCompleted() = runTest {
+        insertBook("q")
+        repo.setCompleted("q", true)
+        val before = db.library().getBook("q")!!.book.lastPlayedAt
+        repo.saveProgress("q", 0, 5_000L, 1000L, 1f, completed = null, touchLastPlayed = false)
+        val b = db.library().getBook("q")!!.book
+        assertEquals(before, b.lastPlayedAt)
+        assertTrue(b.completed)
+        repo.saveProgress("q", 0, 0L, 1000L, 1f, completed = false)
+        assertFalse(db.library().getBook("q")!!.book.completed)
+    }
+
+    @Test
+    fun saveProgressUsesDurationHintOnlyWhenBookHasNone() = runTest {
+        insertBook("d")
+        db.library().updateBook(db.library().getBook("d")!!.book.copy(durationMs = 0L))
+        repo.saveProgress("d", 0, 0L, durationHint = 7_000L, speed = 1f)
+        assertEquals(7_000L, db.library().getBook("d")!!.book.durationMs)
+    }
+
+    @Test
+    fun saveProgressForMissingBookIsNotAnError() = runTest {
+        repo.saveProgress("нема", 0, 0L, 0L, 1f)
+        assertNull(db.library().getBook("нема"))
+    }
+
+    @Test
+    fun renameAndProgressWritesDoNotOverwriteEachOther() = runTest {
+        insertBook("r", title = "Стара")
+        withContext(Dispatchers.IO) {
+            val saves = (1..40).map { i ->
+                async { repo.saveProgress("r", 0, i * 1_000L, 1000L, 1f) }
+            }
+            val rename = async { repo.renameBook("r", "Нова", "Автор") }
+            (saves + rename).awaitAll()
+        }
+        val b = db.library().getBook("r")!!.book
+        assertEquals("Нова", b.title)
+        assertEquals("Автор", b.author)
+        assertTrue(b.positionMs in 1_000L..40_000L)
+    }
+
+    @Test
+    fun renameKeepsProgress() = runTest {
+        insertBook("k")
+        repo.saveProgress("k", 2, 77_000L, 1000L, 1.25f)
+        repo.renameBook("k", "Інша", "Хтось")
+        val b = db.library().getBook("k")!!.book
+        assertEquals(2, b.currentChapterIndex)
+        assertEquals(77_000L, b.positionMs)
+        assertEquals(1.25f, b.playbackSpeed, 0.001f)
+    }
+
+    @Test
+    fun setCompletedKeepsPositionAndStampsLastPlayed() = runTest {
+        insertBook("c")
+        repo.saveProgress("c", 1, 12_000L, 1000L, 1f, touchLastPlayed = false)
+        assertNull(db.library().getBook("c")!!.book.lastPlayedAt)
+        repo.setCompleted("c", true)
+        val b = db.library().getBook("c")!!.book
+        assertTrue(b.completed)
+        assertEquals(12_000L, b.positionMs)
+        assertNotNull(b.lastPlayedAt)
+    }
+
+    @Test
+    fun repairChapterDurationFillsOnlyZeroAndRecomputesBook() = runTest {
+        insertBook("z")
+        db.library().upsertChapters(
+            listOf(
+                ChapterEntity(id = "z-0", bookId = "z", index = 0, title = "1", uri = "file:///z0", durationMs = 1000L),
+                ChapterEntity(id = "z-1", bookId = "z", index = 1, title = "2", uri = "file:///z1", durationMs = 0L),
+            ),
+        )
+        repo.repairChapterDuration("z-0", 99_999L)
+        assertEquals(1000L, db.library().getBook("z")!!.chapters.first { it.id == "z-0" }.durationMs)
+        repo.repairChapterDuration("z-1", 4_000L)
+        val book = db.library().getBook("z")!!
+        assertEquals(4_000L, book.chapters.first { it.id == "z-1" }.durationMs)
+        assertEquals(5_000L, book.book.durationMs)
     }
 
     // --- статистика --------------------------------------------------------
@@ -322,6 +426,39 @@ class LibraryRepositoryTest {
         assertEquals(1, sessions.size)
         assertEquals("s1", sessions[0].id)
         assertEquals(60_000L, sessions[0].durationMs)
+    }
+
+    @Test
+    fun batchDeleteContinuesPastABookThatFailsToDelete() = runTest {
+        insertBook("a", "Перша", "А")
+        insertBook("b", "Друга", "Б")
+        insertBook("c", "Третя", "В")
+        // Зупинка плеєра на другій книзі падає: решта все одно має бути видалена.
+        repo.onBookDeleted = { id -> if (id == "b") error("плеєр не зупинився") }
+
+        val failure = runCatching { repo.batchDeleteBooks(listOf("a", "b", "c")) }.exceptionOrNull()
+
+        assertTrue("про збій мали повідомити", failure != null)
+        assertEquals("перша й третя видалені, друга не зачеплена збоєм", listOf("b"), db.library().getAllBooks().map { it.book.id })
+    }
+
+    @Test
+    fun restoreFromAFileWithOnlyUnusableBookRecordsLeavesTheShelfIntact() = runTest {
+        insertBook("book-1", "Кобзар", "Шевченко")
+
+        // Є масив «books», але записи без id чи назви: розбір дає нуль книг. Це не «порожня копія».
+        assertFalse(repo.importBackupJson("""{"books":[{"foo":1},{"title":"без id"},{"id":"x"}]}"""))
+
+        assertEquals("Кобзар", db.library().getBook("book-1")?.book?.title)
+    }
+
+    @Test
+    fun restoreFromAnExplicitlyEmptyBackupStillReplacesTheShelf() = runTest {
+        insertBook("book-1", "Кобзар", "Шевченко")
+
+        assertTrue(repo.importBackupJson("""{"books":[]}"""))
+
+        assertTrue(db.library().getAllBooks().isEmpty())
     }
 
     // --- історія сесій -----------------------------------------------------

@@ -1,6 +1,7 @@
 package ua.nichnyk.listen.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -50,6 +51,7 @@ import ua.nichnyk.listen.ui.theme.Spacing
 import ua.nichnyk.listen.ui.theme.CardShape
 import ua.nichnyk.listen.data.UserSettings
 import ua.nichnyk.listen.data.VoicePreset
+import ua.nichnyk.listen.ui.components.listeningTimeText
 import ua.nichnyk.listen.ui.components.CharactersBottomSheet
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -57,6 +59,8 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.minimumInteractiveComponentSize
+import androidx.compose.ui.semantics.Role
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -84,12 +88,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.foundation.border
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -150,6 +159,12 @@ fun PlayerScreen(
     // Читають його лише ті кілька елементів нижче, кожен у власній області
     // рекомпозиції, а кільце прогресу — узагалі лише при малюванні.
     val tick = vm.tick.collectAsStateWithLifecycle()
+    val bookmarkMarks by vm.bookmarkMarks.collectAsStateWithLifecycle()
+    // Позиції закладок поточного розділу: смужка показує саме розділ.
+    val chapterMarks = remember(bookmarkMarks, state.chapter?.id) {
+        val id = state.chapter?.id
+        bookmarkMarks.filter { it.chapterId == id }.map { it.positionMs }
+    }
     val settings by vm.settings.collectAsStateWithLifecycle()
     val book = state.book
     // remember за id книги: observeCharacters віддає холодний Room-Flow, тобто
@@ -217,8 +232,8 @@ fun PlayerScreen(
 
         val metrics = if (isLandscape) {
             PlayerMetrics(
-                seekButton = 48.dp,
-                seekIcon = 26.dp,
+                seekButton = 52.dp,
+                seekIcon = 34.dp,
                 playButton = 64.dp,
                 playIcon = 36.dp,
                 titleStyle = MaterialTheme.typography.headlineMedium,
@@ -227,8 +242,8 @@ fun PlayerScreen(
             )
         } else {
             PlayerMetrics(
-                seekButton = 52.dp,
-                seekIcon = 28.dp,
+                seekButton = 60.dp,
+                seekIcon = 40.dp,
                 playButton = 76.dp,
                 playIcon = 40.dp,
                 titleStyle = MaterialTheme.typography.headlineLarge,
@@ -237,18 +252,24 @@ fun PlayerScreen(
             )
         }
 
+        val openQueue = { sheet = Sheet.Queue }
+        val openCharacters = { if (isPro) sheet = Sheet.Characters else onRequestPro() }
+        val openChapters = { sheet = Sheet.Chapters }
+        val openBookmark = {
+            bookmarkNote = ""
+            bookmarkDialogOpen = true
+        }
+
+        // Горизонтально місця під нижній ряд немає, тож дії лишаються зверху.
         val topActions: @Composable () -> Unit = {
             PlayerTopActions(
                 queueSize = state.queue.size,
                 isPro = isPro,
                 onBack = onBack,
-                onQueue = { sheet = Sheet.Queue },
-                onCharacters = { if (isPro) sheet = Sheet.Characters else onRequestPro() },
-                onChapters = { sheet = Sheet.Chapters },
-                onBookmark = {
-                    bookmarkNote = ""
-                    bookmarkDialogOpen = true
-                },
+                onQueue = openQueue,
+                onCharacters = openCharacters,
+                onChapters = openChapters,
+                onBookmark = openBookmark,
             )
         }
 
@@ -338,6 +359,7 @@ fun PlayerScreen(
 
                     ChapterProgress(
                         tick = tick,
+                        markersMs = chapterMarks,
                         onSeek = vm::seek,
                         timeStyle = metrics.timeStyle,
                         modifier = Modifier.fillMaxWidth(),
@@ -350,6 +372,10 @@ fun PlayerScreen(
                     // розійшлися.
                     BookProgressLabel(
                         tick = tick,
+                        chapterIndex = state.chapterIndex,
+                        chapterCount = book.chapters.size,
+                        bookDurationMs = book.book.durationMs,
+                        speed = state.speed,
                         modifier = Modifier.align(Alignment.CenterHorizontally),
                     )
                 }
@@ -358,60 +384,91 @@ fun PlayerScreen(
             Column(
                 Modifier
                     .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
                     .padding(horizontal = Spacing.xl),
             ) {
-                topActions()
+                PlayerBackBar(onBack)
 
-                Spacer(Modifier.height(Spacing.s))
-                cover(
-                    Modifier
-                        .fillMaxWidth(0.72f)
-                        .widthIn(max = 280.dp)
-                        .aspectRatio(1f)
-                        .align(Alignment.CenterHorizontally),
-                )
-                Spacer(Modifier.height(Spacing.xl))
+                // Вміст по центру вільного місця: раніше він тулився до верху, а під
+                // ним лишалася порожня третина екрана. Коли вміст вищий за екран
+                // (великий шрифт, мале вікно), Column займає все й гортається.
+                BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+                    // Обкладинка бере те, що лишається після решти вмісту, а не фіксовану
+                    // ширину: на невисокому екрані чи з великим шрифтом вона випихала
+                    // смужку й кнопку відтворення за межі видимого. Решті потрібно
+                    // близько 280 dp при звичайному шрифті і більше при збільшеному.
+                    val restHeight = 280.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
+                    val coverSize = (maxHeight - restHeight).coerceIn(
+                        120.dp,
+                        minOf(maxWidth * 0.78f, 320.dp),
+                    )
+                    Column(
+                        Modifier
+                            .align(Alignment.Center)
+                            .verticalScroll(rememberScrollState()),
+                    ) {
+                    Spacer(Modifier.height(Spacing.s))
+                    cover(
+                        Modifier
+                            .size(coverSize)
+                            .align(Alignment.CenterHorizontally),
+                    )
+                    Spacer(Modifier.height(Spacing.xl))
 
-                // Назва книги — без maxLines: див. BookTitleDisplayTest.
-                Text(
-                    book.book.title,
-                    style = metrics.titleStyle,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Text(
-                    state.chapter?.title ?: book.book.author,
-                    style = metrics.subtitleStyle,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth().padding(top = Spacing.xxs),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                    // Назва книги — без maxLines: див. BookTitleDisplayTest.
+                    Text(
+                        book.book.title,
+                        style = metrics.titleStyle,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Text(
+                        state.chapter?.title ?: book.book.author,
+                        style = metrics.subtitleStyle,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth().padding(top = Spacing.xxs),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
 
-                JumpBackChip(
-                    target = state.jumpBackTarget,
-                    onJump = vm::jumpBack,
-                    onDismiss = vm::dismissJumpBack,
-                    modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = Spacing.s),
-                )
+                    JumpBackChip(
+                        target = state.jumpBackTarget,
+                        onJump = vm::jumpBack,
+                        onDismiss = vm::dismissJumpBack,
+                        modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = Spacing.s),
+                    )
 
-                Spacer(Modifier.height(Spacing.xl))
-                ChapterProgress(
-                    tick = tick,
-                    onSeek = vm::seek,
-                    timeStyle = metrics.timeStyle,
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                    Spacer(Modifier.height(Spacing.xl))
+                    ChapterProgress(
+                        tick = tick,
+                        markersMs = chapterMarks,
+                        onSeek = vm::seek,
+                        timeStyle = metrics.timeStyle,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
 
-                Spacer(Modifier.height(Spacing.s))
-                transport()
+                    Spacer(Modifier.height(Spacing.s))
+                    transport()
 
-                Spacer(Modifier.height(Spacing.m))
-                BookProgressLabel(
-                    tick = tick,
-                    modifier = Modifier.align(Alignment.CenterHorizontally),
+                    Spacer(Modifier.height(Spacing.m))
+                    BookProgressLabel(
+                        tick = tick,
+                        chapterIndex = state.chapterIndex,
+                        chapterCount = book.chapters.size,
+                        bookDurationMs = book.book.durationMs,
+                        speed = state.speed,
+                        modifier = Modifier.align(Alignment.CenterHorizontally),
+                    )
+                    }
+                }
+
+                PlayerBottomActions(
+                    queueSize = state.queue.size,
+                    isPro = isPro,
+                    onQueue = openQueue,
+                    onCharacters = openCharacters,
+                    onChapters = openChapters,
+                    onBookmark = openBookmark,
                 )
             }
         }
@@ -502,6 +559,9 @@ fun PlayerScreen(
                                 color = MaterialTheme.colorScheme.primary,
                             )
                             Text(stringResource(R.string.current_speed), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            // Швидкість і так запамʼятовується окремо для кожної книги
+                            // (BookEntity.playbackSpeed), але з екрана цього не видно.
+                            Text(stringResource(R.string.speed_saved_per_book), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
 
                         IconButton(
@@ -969,6 +1029,108 @@ private fun PlayerCover(
     }
 }
 
+/** Лише «назад»: решта дій у вертикальній розкладці живе внизу, з підписами. */
+@Composable
+private fun PlayerBackBar(onBack: () -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        IconButton(onClick = onBack) {
+            Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = stringResource(R.string.back))
+        }
+    }
+}
+
+/**
+ * Нижній ряд дій з підписами: черга, персонажі, розділи, закладка.
+ *
+ * Чотири значки вгорі без тексту читалися лише тими, хто вже знав, що вони
+ * роблять, а закладку — найчастішу з них — доводилося тягнутися до верху екрана.
+ * Тепер вони під великим пальцем, і кожна має слово.
+ */
+@Composable
+private fun PlayerBottomActions(
+    queueSize: Int,
+    isPro: Boolean,
+    onQueue: () -> Unit,
+    onCharacters: () -> Unit,
+    onChapters: () -> Unit,
+    onBookmark: () -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = Spacing.s),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+    ) {
+        PlayerBottomAction(
+            Icons.AutoMirrored.Outlined.PlaylistPlay,
+            stringResource(R.string.player_action_queue),
+            onQueue,
+            badge = queueSize.takeIf { it > 0 }?.toString(),
+            modifier = Modifier.weight(1f),
+        )
+        // Не `enabled = isPro`: вимкнена кнопка мовчить (див. PlayerTopActions).
+        PlayerBottomAction(
+            Icons.Outlined.Person,
+            stringResource(R.string.characters_title),
+            onCharacters,
+            badge = if (isPro) null else "\uD83D\uDC8E",
+            modifier = Modifier.weight(1f),
+        )
+        PlayerBottomAction(
+            Icons.AutoMirrored.Outlined.List,
+            stringResource(R.string.chapters),
+            onChapters,
+            modifier = Modifier.weight(1f),
+        )
+        PlayerBottomAction(
+            Icons.Outlined.BookmarkAdd,
+            stringResource(R.string.bookmark),
+            onBookmark,
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+@Composable
+private fun PlayerBottomAction(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    badge: String? = null,
+) {
+    Column(
+        modifier
+            .clip(MaterialTheme.shapes.medium)
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(vertical = Spacing.xs),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box {
+            // Підпис озвучує сам рядок, тож значок без власного опису.
+            Icon(icon, contentDescription = null)
+            if (badge != null) {
+                Text(
+                    badge,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.align(Alignment.TopEnd),
+                )
+            }
+        }
+        // Підпис стискається до свого місця, а не обрізається трикрапкою: при великому
+        // шрифті «Characters» інакше ставало «Char…», і не було видно, що це за кнопка.
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            autoSize = androidx.compose.foundation.text.TextAutoSize.StepBased(
+                minFontSize = 5.sp,
+                maxFontSize = MaterialTheme.typography.labelMedium.fontSize,
+            ),
+        )
+    }
+}
+
 /** Верхня панель дій: назад, черга, персонажі, глави, закладка. */
 @Composable
 private fun PlayerTopActions(
@@ -1065,6 +1227,34 @@ private fun JumpBackChip(
     }
 }
 
+/**
+ * Кнопка перемотки з числом секунд усередині стрілки: крок налаштовується
+ * (10/15/30/45/60 с), а голий значок не казав, на скільки саме перемотає.
+ */
+@Composable
+private fun SeekIcon(
+    painter: androidx.compose.ui.graphics.painter.Painter,
+    seconds: Int,
+    contentDescription: String,
+    size: androidx.compose.ui.unit.Dp,
+) {
+    Box(contentAlignment = Alignment.Center) {
+        Icon(painter, contentDescription = contentDescription, modifier = Modifier.size(size))
+        // Число лише для екрана: звучить підпис кнопки, а не «15» окремо.
+        Text(
+            seconds.toString(),
+            modifier = Modifier.clearAndSetSemantics {},
+            // Розмір у dp, перерахований в sp без масштабу шрифту: стрілка не росте разом із
+            // шрифтом, тож число мусить лишатись усередині неї (підпис кнопки для озвучення
+            // від масштабу не залежить, число — лише для ока).
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = with(androidx.compose.ui.platform.LocalDensity.current) { (size * 0.36f).toSp() },
+            ),
+            color = LocalContentColor.current,
+        )
+    }
+}
+
 /** Швидкість, перемотування, пуск/пауза й таймер сну. */
 @Composable
 private fun PlayerTransport(
@@ -1082,20 +1272,24 @@ private fun PlayerTransport(
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // Рамка, а не голий жовтий текст: «1×» має читатися кнопкою, а не підписом.
         Text(
             state.speed.formatSpeed(),
             modifier = Modifier
+                .minimumInteractiveComponentSize()
                 .clip(CircleShape)
-                .clickable(onClick = onSpeed)
-                .padding(Spacing.s),
+                .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
+                .clickable(role = Role.Button, onClick = onSpeed)
+                .padding(horizontal = Spacing.m, vertical = Spacing.s),
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.primary,
         )
         IconButton(onClick = onSkipBack, modifier = Modifier.size(metrics.seekButton)) {
-            Icon(
+            SeekIcon(
                 painterResource(R.drawable.ic_seek_replay),
+                seconds = settings.skipBackMs / 1000,
                 contentDescription = stringResource(R.string.rewind_sec, settings.skipBackMs / 1000),
-                modifier = Modifier.size(metrics.seekIcon),
+                size = metrics.seekIcon,
             )
         }
         Box(
@@ -1103,7 +1297,7 @@ private fun PlayerTransport(
                 .size(metrics.playButton)
                 .clip(CircleShape)
                 .background(MaterialTheme.colorScheme.primary)
-                .clickable(onClick = onPlayPause),
+                .clickable(role = Role.Button, onClick = onPlayPause),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
@@ -1114,10 +1308,11 @@ private fun PlayerTransport(
             )
         }
         IconButton(onClick = onSkipForward, modifier = Modifier.size(metrics.seekButton)) {
-            Icon(
+            SeekIcon(
                 painterResource(R.drawable.ic_seek_forward),
+                seconds = settings.skipForwardMs / 1000,
                 contentDescription = stringResource(R.string.forward_sec, settings.skipForwardMs / 1000),
-                modifier = Modifier.size(metrics.seekIcon),
+                size = metrics.seekIcon,
             )
         }
         Box {
@@ -1165,6 +1360,7 @@ private fun PlayerTransport(
 @Composable
 private fun ChapterProgress(
     tick: State<PlaybackTick>,
+    markersMs: List<Long>,
     onSeek: (Long) -> Unit,
     timeStyle: TextStyle,
     // Ширину задає той, хто викликає, і задає явно: доти обидві копії були голим
@@ -1181,6 +1377,7 @@ private fun ChapterProgress(
     val sliderMax = now.durationMs.coerceAtLeast(1L).toFloat()
     val shownMs = if (dragging) dragValue.toLong() else now.positionMs
     Column(modifier) {
+        Box {
         Slider(
             value = if (dragging) dragValue else now.positionMs.toFloat().coerceIn(0f, sliderMax),
             onValueChange = {
@@ -1197,6 +1394,25 @@ private fun ChapterProgress(
                 activeTrackColor = MaterialTheme.colorScheme.primary,
             ),
         )
+        // Крапки закладок під смужкою: видно, де в цьому розділі щось збережено.
+        // Малюємо під доріжкою, а не поверх неї, щоб не плутатися з бігунком.
+        if (markersMs.isNotEmpty() && now.durationMs > 0L) {
+            val dotColor = MaterialTheme.colorScheme.tertiary
+            Canvas(Modifier.matchParentSize()) {
+                val inset = 2.dp.toPx()
+                val usable = size.width - 2 * inset
+                val y = size.height / 2f + 16.dp.toPx()
+                markersMs.forEach { ms ->
+                    val fraction = (ms.toFloat() / now.durationMs).coerceIn(0f, 1f)
+                    drawCircle(
+                        dotColor,
+                        radius = 2.5.dp.toPx(),
+                        center = androidx.compose.ui.geometry.Offset(inset + usable * fraction, y),
+                    )
+                }
+            }
+        }
+        }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(
                 shownMs.formatClock(),
@@ -1216,14 +1432,37 @@ private fun ChapterProgress(
 @Composable
 private fun BookProgressLabel(
     tick: State<PlaybackTick>,
+    chapterIndex: Int,
+    chapterCount: Int,
+    bookDurationMs: Long,
+    speed: Float,
     modifier: Modifier = Modifier,
 ) {
-    Text(
-        stringResource(R.string.book_progress, (tick.value.bookProgress * 100).toInt()),
-        modifier = modifier,
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
+    // Смужка вище показує розділ, а відсоток — усю книгу; у підписі це названо
+    // обоє. Для книги з одного розділу «розділ 1 з 1» нічого не каже.
+    val progress = tick.value.bookProgress
+    val percent = (progress * 100).toInt()
+    // Скільки лишилося слухати саме при поточній швидкості: 10 годин книги на 1,5×
+    // — це шість з половиною, а відсоток цього не каже.
+    val leftMs = ((1f - progress) * bookDurationMs / speed.coerceAtLeast(0.1f)).toLong()
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            if (chapterCount > 1) {
+                stringResource(R.string.book_progress_chapter, chapterIndex + 1, chapterCount, percent)
+            } else {
+                stringResource(R.string.book_progress, percent)
+            },
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (bookDurationMs > 0L && leftMs >= 1_000L) {
+            Text(
+                stringResource(R.string.book_time_left, listeningTimeText(leftMs), speed.formatSpeed()),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
 }
 
 private enum class Sheet { Speed, Sleep, Chapters, Queue, Characters }

@@ -12,8 +12,11 @@ sealed interface SeekAction {
     /** Перемотати в межах поточної глави. */
     data class To(val positionMs: Long) : SeekAction
 
-    /** Вийти за початок глави — попередня глава. */
+    /** Вийти за початок глави, довжина попередньої невідома — на початок попередньої. */
     data object PreviousChapter : SeekAction
+
+    /** Вийти за початок глави — у попередню, на [positionMs] від її початку (її кінець мінус залишок кроку). */
+    data class ToPrevious(val positionMs: Long) : SeekAction
 
     /** Вийти за кінець глави — наступна. */
     data object NextChapter : SeekAction
@@ -25,6 +28,11 @@ sealed interface SeekAction {
  * [chapterDurationMs] <= 0 означає «тривалість ще невідома» — тоді вперед не обмежуємо
  * і не перестрибуємо главу, інакше кнопка «вперед» на початку буферизації
  * випадково гортала б книгу.
+ *
+ * Крок назад за початок глави віддає **залишок кроку** з кінця попередньої, коли її
+ * довжина відома ([previousDurationMs] > 0): «назад 15 с» на п'ятій секунді має
+ * дати десять секунд з кінця попередньої, а не всю її — на довгих главах m4b це
+ * були б десятки хвилин. Невідома довжина — старий шлях, початок попередньої.
  */
 fun seekTarget(
     currentPositionMs: Long,
@@ -32,10 +40,13 @@ fun seekTarget(
     deltaMs: Long,
     hasPrevious: Boolean,
     hasNext: Boolean,
+    previousDurationMs: Long = 0L,
 ): SeekAction {
     val duration = if (chapterDurationMs > 0L) chapterDurationMs else Long.MAX_VALUE
     val target = currentPositionMs + deltaMs
     return when {
+        target < 0L && hasPrevious && previousDurationMs > 0L ->
+            SeekAction.ToPrevious((previousDurationMs + target).coerceIn(0L, previousDurationMs))
         target < 0L && hasPrevious -> SeekAction.PreviousChapter
         target < 0L -> SeekAction.To(0L)
         target >= duration && hasNext -> SeekAction.NextChapter
@@ -86,3 +97,22 @@ fun jumpBackLabel(positionMs: Long, locale: java.util.Locale = java.util.Locale.
         String.format(locale, "%02d:%02d", minutes, seconds)
     }
 }
+
+/**
+ * Чи треба забути «останню книгу», коли зі сховища зникла [clearedBookId].
+ *
+ * Лише якщо це саме вона. Видалення, доливання файлів чи перепривʼязка іншої книги
+ * не мають стирати місце, де слухач зупинився в цій.
+ */
+fun shouldForgetLastBook(lastBookId: String?, clearedBookId: String): Boolean =
+    lastBookId != null && lastBookId == clearedBookId
+
+/**
+ * Швидкість, яку книга «обрала» сама, або `null`, якщо їй іде значення з налаштувань.
+ *
+ * Книга, яку ще жодного разу не вмикали і в якої стоїть рівно 1.0, свою швидкість не
+ * обирала. У всіх інших випадках виграє швидкість книги. Спільне для телефона
+ * (PlayerManager) і для Android Auto / голосу (PlaybackService).
+ */
+fun bookChosenSpeed(playbackSpeed: Float, lastPlayedAt: Long?): Float? =
+    playbackSpeed.takeIf { it > 0f && (lastPlayedAt != null || it != 1f) }
