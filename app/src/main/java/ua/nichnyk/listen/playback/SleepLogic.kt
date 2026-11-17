@@ -49,10 +49,20 @@ fun isInNightWindow(nowMinute: Int, startMinute: Int, endMinute: Int): Boolean {
 }
 
 /**
+ * Скільки триває відмова від нічного таймера після ручного скасування.
+ *
+ * Вісім годин перекривають типову ніч, але не глушать розклад наступного вечора,
+ * навіть якщо процес застосунку весь день не вивантажувався з памʼяті.
+ */
+const val NIGHT_TIMER_DISMISS_TTL_MS = 8 * 60 * 60 * 1_000L
+
+/**
  * Чи заводити нічний таймер сну, коли відтворення щойно почалося.
  *
  * Лише якщо ним ніхто не керує: заведений користувачем таймер (хоч у якому режимі)
- * важить більше за розклад і не перезаписується.
+ * важить більше за розклад і не перезаписується. Якщо слухач уже скасував таймер
+ * вручну цієї ночі ([dismissedAgoMs] у межах [NIGHT_TIMER_DISMISS_TTL_MS]),
+ * повторне зняття з паузи не вмикає його знову.
  */
 fun shouldStartNightTimer(
     enabled: Boolean,
@@ -60,4 +70,9 @@ fun shouldStartNightTimer(
     nowMinute: Int,
     startMinute: Int,
     endMinute: Int,
-): Boolean = enabled && !timerActive && isInNightWindow(nowMinute, startMinute, endMinute)
+    dismissedAgoMs: Long? = null,
+): Boolean {
+    if (!enabled || timerActive) return false
+    if (dismissedAgoMs != null && dismissedAgoMs in 0L..NIGHT_TIMER_DISMISS_TTL_MS) return false
+    return isInNightWindow(nowMinute, startMinute, endMinute)
+}

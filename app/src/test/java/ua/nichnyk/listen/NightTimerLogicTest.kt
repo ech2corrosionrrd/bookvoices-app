@@ -4,6 +4,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import ua.nichnyk.listen.data.UserSettings
+import ua.nichnyk.listen.playback.NIGHT_TIMER_DISMISS_TTL_MS
 import ua.nichnyk.listen.playback.isInNightWindow
 import ua.nichnyk.listen.playback.shouldStartNightTimer
 
@@ -65,5 +66,42 @@ class NightTimerLogicTest {
         assertTrue(isInNightWindow(hm(23), d.nightTimerStartMinute, d.nightTimerEndMinute))
         assertFalse(isInNightWindow(hm(12), d.nightTimerStartMinute, d.nightTimerEndMinute))
         assertTrue(d.nightTimerMinutes in 15..60)
+    }
+
+    @Test
+    fun manualCancellationSuppressesRestartDuringTheSameNight() {
+        val inWindow = hm(23, 15)
+        // Щойно скасували або минула година — повторне зняття з паузи не вмикає таймер знову.
+        assertFalse(
+            shouldStartNightTimer(
+                enabled = true,
+                timerActive = false,
+                nowMinute = inWindow,
+                startMinute = hm(22),
+                endMinute = hm(6),
+                dismissedAgoMs = 0L,
+            ),
+        )
+        assertFalse(
+            shouldStartNightTimer(
+                enabled = true,
+                timerActive = false,
+                nowMinute = inWindow,
+                startMinute = hm(22),
+                endMinute = hm(6),
+                dismissedAgoMs = 60 * 60 * 1_000L,
+            ),
+        )
+        // Наступного вечора (поза межами TTL) розклад знову працює.
+        assertTrue(
+            shouldStartNightTimer(
+                enabled = true,
+                timerActive = false,
+                nowMinute = inWindow,
+                startMinute = hm(22),
+                endMinute = hm(6),
+                dismissedAgoMs = NIGHT_TIMER_DISMISS_TTL_MS + 1L,
+            ),
+        )
     }
 }

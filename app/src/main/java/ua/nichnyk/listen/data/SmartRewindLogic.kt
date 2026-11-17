@@ -35,4 +35,30 @@ object SmartRewindLogic {
         val elapsed = (now - lastPlayedAt).coerceAtLeast(0L)
         return (currentPositionMs - calculateRewindMs(elapsed)).coerceAtLeast(0L)
     }
+
+    /**
+     * Відкат при відновленні з паузи в межах одного життя сервісу: час паузи
+     * береться з памʼяті (див. PlaybackService), а не з бази. 0 в
+     * [pausedAtWallMs] означає «паузу не фіксували» — відкат не застосовується.
+     */
+    fun resumePosition(
+        pausedAtWallMs: Long,
+        currentPositionMs: Long,
+        now: Long = System.currentTimeMillis(),
+    ): Long {
+        if (pausedAtWallMs <= 0L || currentPositionMs <= 0L) return currentPositionMs
+        val elapsed = (now - pausedAtWallMs).coerceAtLeast(0L)
+        return (currentPositionMs - calculateRewindMs(elapsed)).coerceAtLeast(0L)
+    }
+
+    /**
+     * Чи скидає розрив позиції мітку паузи. Якщо під час паузи користувач сам
+     * перемотав (SEEK, SEEK_ADJUSTMENT — крок ±, стрибок по главі чи повзунку), відкат
+     * від обраного місця означав би потрапити на 5–30 с раніше за вибране.
+     * Це [androidx.media3.common.Player.DISCONTINUITY_REASON_SEEK] (1) і
+     * [androidx.media3.common.Player.DISCONTINUITY_REASON_SEEK_ADJUSTMENT] (2).
+     */
+    fun resetsPauseOnDiscontinuity(reason: Int): Boolean =
+        reason == androidx.media3.common.Player.DISCONTINUITY_REASON_SEEK ||
+            reason == androidx.media3.common.Player.DISCONTINUITY_REASON_SEEK_ADJUSTMENT
 }

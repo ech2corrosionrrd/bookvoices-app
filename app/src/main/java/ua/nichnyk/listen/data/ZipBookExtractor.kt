@@ -1,5 +1,6 @@
 package ua.nichnyk.listen.data
 
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
@@ -46,7 +47,12 @@ class ZipBookExtractor(
     private val skipPath: (String) -> Boolean = { false },
     private val checkCancelled: () -> Unit = {},
     private val onEntry: (String) -> Unit = {},
+    private val isImage: (String) -> Boolean = { false },
 ) {
+
+    /** Найкраща обкладинка з архіву в памʼяті (на диск у [destDir] пишуться лише аудіофайли). */
+    var coverBytes: ByteArray? = null
+        private set
 
     private class BadNames : Exception()
 
@@ -68,6 +74,8 @@ class ZipBookExtractor(
 
     private fun extractWith(open: () -> InputStream?, charset: Charset): List<ExtractedAudio> {
         val written = ArrayList<ExtractedAudio>()
+        coverBytes = null
+        var bestCoverScore = Int.MAX_VALUE
         try {
             val raw = open() ?: throw ZipUnreadableException(null)
             ZipInputStream(raw.buffered(), charset).use { zip ->
@@ -85,8 +93,21 @@ class ZipBookExtractor(
                     } ?: break
                     if (++entries > MAX_ENTRIES) throw ZipUnreadableException(null)
                     val path = entry.name.replace('\\', '/')
-                    if (path.contains('�')) throw BadNames()
-                    if (entry.isDirectory || skipPath(path) || !isAudio(path.substringAfterLast('/'))) continue
+                    if (path.contains('\uFFFD')) throw BadNames()
+                    if (entry.isDirectory || skipPath(path)) continue
+                    val fileName = path.substringAfterLast('/')
+                    if (!isAudio(fileName)) {
+                        if (isImage(fileName)) {
+                            val score = coverScore(fileName)
+                            if (score < bestCoverScore) {
+                                readCoverEntry(zip)?.let { bytes ->
+                                    coverBytes = bytes
+                                    bestCoverScore = score
+                                }
+                            }
+                        }
+                        continue
+                    }
 
                     onEntry(path)
                     val target = File(destDir, "${UUID.randomUUID()}_${safeName(path)}")
@@ -119,15 +140,45 @@ class ZipBookExtractor(
                     written += ExtractedAudio(path, target)
                 }
             }
-            if (written.isEmpty()) throw ZipHasNoAudioException()
+            if (written.isEmpty()) {
+                coverBytes = null
+                throw ZipHasNoAudioException()
+            }
             return written
         } catch (e: Throwable) {
+            coverBytes = null
             written.forEach { it.file.delete() }
             if (e is IOException && e !is ZipHasNoAudioException && e !is ZipOutOfSpaceException && e !is ZipUnreadableException) {
                 throw ZipUnreadableException(e)
             }
             throw e
         }
+    }
+
+    private fun coverScore(fileName: String): Int {
+        val name = fileName.lowercase()
+        return when {
+            name.contains("cover") -> 0
+            name.contains("folder") -> 1
+            name.contains("front") -> 2
+            name.contains("album") -> 3
+            name.contains("art") -> 4
+            else -> 10
+        }
+    }
+
+    private fun readCoverEntry(zip: ZipInputStream): ByteArray? {
+        val out = ByteArrayOutputStream()
+        val buf = ByteArray(16 * 1024)
+        var total = 0
+        while (true) {
+            val n = zip.read(buf)
+            if (n < 0) break
+            total += n
+            if (total > MAX_COVER_BYTES) return null
+            out.write(buf, 0, n)
+        }
+        return out.toByteArray().takeIf { it.isNotEmpty() }
     }
 
     private fun looksLikeNoSpace(e: IOException): Boolean {
@@ -148,6 +199,7 @@ class ZipBookExtractor(
 
     companion object {
         const val MAX_ENTRIES = 5_000
+        const val MAX_COVER_BYTES = 8 * 1024 * 1024
         private const val SPACE_CHECK_EVERY = 8L * 1024 * 1024
         private const val MAX_TOTAL_BYTES = 32L * 1024 * 1024 * 1024
     }

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Тло ярлика — колір картки віджета, щоб двері до плеєра виглядали однаково. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#211E1B" />
+</shape>

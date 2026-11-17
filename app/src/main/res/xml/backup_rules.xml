@@ -16,4 +16,8 @@
     <exclude domain="sharedpref" path="bookvoices_secrets_v2.xml" />
     <exclude domain="file" path="imports/" />
     <exclude domain="file" path="demo/" />
+    <exclude domain="file" path="nichnyk.db.downgrade.bak" />
+    <exclude domain="file" path="nichnyk.db.downgrade.bak-wal" />
+    <exclude domain="file" path="nichnyk.db.downgrade.bak.tmp" />
+    <exclude domain="file" path="nichnyk.db.downgrade.bak-wal.tmp" />
 </full-backup-content>

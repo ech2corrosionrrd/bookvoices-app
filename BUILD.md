@@ -31,6 +31,14 @@ gradlew.bat :app:bundleRelease -PreleaseTag=vX.Y.Z
 
 Без `keystore.properties` release збереться непідписаним.
 
+### Збірка FOSS (F-Droid / IzzyOnDroid)
+
+```sh
+./gradlew :app:assembleRelease -Pfoss=true -PreleaseTag=vX.Y.Z
+```
+
+Збірка з `-Pfoss=true` не підтягує `com.android.billingclient:billing-ktx`, не містить дозволу `com.android.vending.BILLING` і має відкриті всі можливості без платіжного банера.
+
 ### GitHub Release
 
 Тег `vX.Y.Z` → Actions збирає й (за наявності секретів) підписує

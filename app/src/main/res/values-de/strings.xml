@@ -119,7 +119,22 @@
     <string name="section_backup">Sicherung &amp; Wiederherstellung</string>
     <string name="backup_desc">Lesezeichen, Tags, Historie und Positionen als JSON sichern. Die Wiederherstellung ersetzt das aktuelle Regal (Audiodateien bleiben unverändert). Warteschlange und Bibliotheksordner verbleiben auf dem Gerät.</string>
     <string name="btn_backup">Backup erstellen</string>
+    <string name="btn_backup_save">In Datei speichern</string>
+    <string name="backup_save_failed">Datei konnte nicht gespeichert werden</string>
+    <string name="file_saved">Datei gespeichert</string>
     <string name="btn_restore">Wiederherstellen</string>
+    <string name="auto_backup_title">Automatische Sicherung in einen Ordner</string>
+    <string name="auto_backup_desc">Einmal täglich speichert die App eine Sicherung im gewählten Ordner und behält die letzten 7. Wähle einen Ordner auf der Speicherkarte oder einen, den Google Drive oder eine andere App synchronisiert – dann überstehen Fortschritt und Lesezeichen den Verlust des Handys. Wiederherstellen mit der Schaltfläche oben.</string>
+    <string name="auto_backup_pick">Ordner wählen</string>
+    <string name="auto_backup_change">Ordner ändern</string>
+    <string name="auto_backup_now">Jetzt sichern</string>
+    <string name="auto_backup_off">Ausschalten</string>
+    <string name="auto_backup_folder">Ordner: %s</string>
+    <string name="auto_backup_last">Letzte Sicherung: %s</string>
+    <string name="auto_backup_never">Die erste Sicherung erscheint in einer Minute</string>
+    <string name="auto_backup_failed">Sicherung fehlgeschlagen. Der Ordner wurde vielleicht gelöscht oder der Zugriff ging verloren – wähle den Ordner erneut.</string>
+    <string name="auto_backup_saved">Sicherung gespeichert</string>
+    <string name="auto_backup_pick_failed">Kein Zugriff auf diesen Ordner</string>
     <string name="backup_restored_success">Regal aus Sicherungsdatei wiederhergestellt.</string>
     <string name="backup_restore_failed">Fehler beim Lesen der Sicherungsdatei</string>
     <string name="section_cloud">Cloud-Synchronisation (WebDAV)</string>
@@ -143,6 +158,18 @@
 
     <string name="version_format">Version %s</string>
     <string name="rate_app">BookVoices bei Google Play bewerten</string>
+    <string name="share_log">Diagnoseprotokoll teilen</string>
+    <string name="share_log_desc">Nur Einträge von BookVoices, ohne Dateipfade. Es wird nichts automatisch gesendet.</string>
+    <string name="report_problem">Problem melden</string>
+    <string name="report_problem_desc">Funktioniert etwas nicht? Schreib dem Entwickler. Ein Diagnoseprotokoll ohne Buchtitel und Dateipfade wird angehängt, und du siehst alles vor dem Senden.</string>
+    <string name="report_by_email">E-Mail schreiben</string>
+    <string name="report_on_github">GitHub</string>
+    <string name="report_email_subject">BookVoices %1$s: Problem</string>
+    <string name="report_email_body">Was ist passiert:\n\n\nWas hast du kurz davor gemacht:\n\n</string>
+    <string name="report_issue_title">Problem in BookVoices</string>
+    <string name="report_no_email_app">Keine E-Mail-App gefunden. Versuche GitHub.</string>
+    <string name="report_no_browser">Browser konnte nicht geöffnet werden.</string>
+    <string name="shortcut_resume_long">„%1$s“ fortsetzen</string>
     <string name="seconds_format">%d s</string>
     <string name="minutes_format">%d min</string>
     <string name="btn_start">Starten</string>
@@ -179,6 +206,19 @@
     <string name="new_book_title">Neues Buch</string>
     <string name="chapter_word">Kapitel</string>
     <string name="chapter_number">Kapitel %1$d</string>
+    <string name="chapters_number_action">Nummerieren</string>
+    <string name="chapter_rename_hint">Kapitel gedrückt halten, um es umzubenennen</string>
+    <string name="chapter_rename_title">Kapitel umbenennen</string>
+    <string name="chapters_number_confirm_title">Kapitel nummerieren?</string>
+    <string name="chapters_numbered_none">Die Kapitel sind bereits nummeriert</string>
+    <plurals name="chapters_number_confirm_msg">
+        <item quantity="one">Die Namen aller %1$d Kapitel werden zu „%2$s“, „%3$s“ usw. Alte Namen werden nicht gespeichert.</item>
+        <item quantity="other">Die Namen aller %1$d Kapitel werden zu „%2$s“, „%3$s“ usw. Alte Namen werden nicht gespeichert.</item>
+    </plurals>
+    <plurals name="chapters_numbered">
+        <item quantity="one">%d Kapitel umbenannt</item>
+        <item quantity="other">%d Kapitel umbenannt</item>
+    </plurals>
     <string name="demo_book_title">BookVoices. Einführung</string>
     <string name="demo_book_author">BookVoices</string>
     <string name="import_no_space">Nicht genügend freier Speicherplatz</string>
@@ -363,8 +403,8 @@
     <string name="export_catalog_exported_at">Exportiert am: %s</string>
     <string name="export_catalog_total_books">Bücher gesamt: %d</string>
     <string name="export_catalog_total_duration">Gesamtdauer: %s</string>
-    <string name="auto_bookmark_bluetooth">Auto-Lesezeichen bei Bluetooth-Trennung</string>
-    <string name="auto_bookmark_bluetooth_desc">Speichert automatisch ein Lesezeichen beim Trennen von Auto oder Kopfhörern</string>
+    <string name="auto_bookmark_bluetooth">Auto-Lesezeichen beim Trennen der Kopfhörer</string>
+    <string name="auto_bookmark_bluetooth_desc">Speichert ein Lesezeichen, wenn Bluetooth- oder Kabelkopfhörer den Ton verlieren</string>
     <string name="resume_on_reconnect">Fortsetzen, wenn Kopfhörer wieder verbunden sind</string>
     <string name="resume_on_reconnect_desc">Nach kurzer Unterbrechung (bis 15 Minuten) weiterspielen, sobald Kopfhörer oder Auto wieder verbunden sind</string>
     <string name="bookmark_bluetooth_disconnected">Bluetooth getrennt um %s</string>
@@ -376,7 +416,7 @@
     <string name="pro_lifetime_desc">Lebenslange Premium-Lizenz ohne wiederkehrende Kosten</string>
     <string name="pro_benefit_skip_silence">Dynamisches Überspringen von Sprechpausen</string>
     <string name="pro_benefit_volume_boost">Hardware-Lautstärkeverstärkung Volume Boost (+6 dB)</string>
-    <string name="pro_benefit_bluetooth">Auto-Lesezeichen bei Bluetooth-Trennung</string>
+    <string name="pro_benefit_bluetooth">Auto-Lesezeichen beim Trennen der Kopfhörer</string>
     <string name="pro_benefit_equalizer">Stimmen-Equalizer und Tonhöhenkorrektur</string>
     <string name="pro_benefit_characters">Figurenliste für jedes Buch</string>
     <string name="pro_locked">💎 Pro-Funktion</string>
@@ -418,4 +458,19 @@
     <string name="mark_finished">Als gehört markieren</string>
     <string name="mark_unfinished">Markierung „gehört“ entfernen</string>
     <string name="pro_benefit_pitch">Tonhöhe der Stimme anpassen</string>
+    <string name="queue_move_up">Nach oben verschieben</string>
+    <string name="queue_move_down">Nach unten verschieben</string>
+    <string name="share_book_summary">Buchzusammenfassung teilen</string>
+    <string name="change_cover">Cover ändern</string>
+    <string name="export_history_csv">Hörverlauf exportieren (CSV)</string>
+    <string name="stats_streak_current">Serie: %d T.</string>
+    <string name="stats_streak_best">Rekord: %d T.</string>
+    <string name="daily_goal_title">Tagesziel</string>
+    <string name="daily_goal_off">Aus</string>
+    <string name="daily_goal_set">Tagesziel festlegen</string>
+    <string name="daily_goal_progress">Heute: %1$s / %2$s</string>
+    <string name="ab_repeat_title">A–B-Wiederholung</string>
+    <string name="ab_repeat_waiting_b">A: %s → für B tippen</string>
+    <string name="ab_repeat_active">A–B: %1$s – %2$s</string>
+    <string name="pro_benefit_ab_repeat">A–B-Abschnittswiederholung</string>
 </resources>

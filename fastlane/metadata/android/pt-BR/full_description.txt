@@ -1,0 +1,40 @@
+BookVoices é um player de audiolivros para a sua própria coleção. Adicione uma pasta com arquivos mp3, m4b, ogg ou flac e continue exatamente de onde parou. Sem conta, sem anúncios, sem assinatura; seus arquivos ficam no seu celular.
+
+OUVIR
+• mp3, m4b, ogg, flac e opus; capítulos de m4b, ID3 e CUE, e pastas aninhadas CD1/CD2
+• Renomeie capítulos ou numere-os após confirmar
+• Continua de onde você parou, retrocesso inteligente após uma pausa
+• Velocidade de reprodução, avanço e retrocesso, gestos opcionais no botão do fone
+• Temporizador para dormir: minutos, fim do capítulo ou do livro, agite para estender; um horário noturno o ativa sozinho
+• Marcador com um toque na área de notificações; notas nos marcadores e busca entre eles
+• Retoma quando o fone se reconecta (opcional)
+• Fila Próximos para ouvir vários livros em sequência
+• Reprodução em segundo plano, widget na tela inicial, controles na tela de bloqueio e na notificação
+• Atalho "Continuar" no ícone do app e bloco nas configurações rápidas para tocar ou pausar
+
+BIBLIOTECA
+• Estante com capas, busca, tags, séries e favoritos fixados
+• Grade ou lista compacta, confortável mesmo com cem livros
+• Importe uma pasta, arquivos avulsos ou um arquivo ZIP (abra direto do seu gerenciador de arquivos); capa personalizada
+• Reconhece "Autor - Título" nos nomes das pastas, com tela de autor
+• Busca rápida por várias palavras, sem diferenciar maiúsculas, acentos e apóstrofos
+• Adiciona automaticamente livros novos das pastas que você escolher
+• Sinaliza livros cujos arquivos sumiram
+
+ESTATÍSTICAS E DADOS
+• Histórico de escuta com gráficos por semana, mês e ano
+• Backup do progresso em JSON ou no seu próprio servidor WebDAV; sincronização entre celular e tablet sem livros duplicados
+• Backup automático diário na pasta que você escolher (os 7 últimos)
+• Sequência de dias ouvindo, meta diária e exportação do histórico em CSV
+• Exporte catálogo, marcadores e um resumo de cada livro em Markdown
+
+CONFORTO
+• Temas Noite, Papel e preto puro OLED
+• Layout pensado para fonte grande e tablets
+• 7 idiomas: English, Українська, Polski, Deutsch, Español, Français, Português (Brasil)
+
+Privacidade. Sem análises, sem rastreadores, sem cadastro. O app funciona offline; a rede só é usada se você mesmo ativar o backup WebDAV.
+
+Nesta versão, todos os recursos Pro estão liberados de graça: pular silêncios e pausas, aumento de volume por hardware (+6 dB), equalizador de voz com correção de tom, marcador automático ao desconectar os fones, lista de personagens por livro e repetição A–B. No Google Play eles são vendidos como compra única; se você gostar do app, é uma forma de apoiá-lo.
+
+BookVoices não vende nem transmite livros: ele toca os que você já tem.

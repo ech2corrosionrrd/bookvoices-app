@@ -123,6 +123,14 @@ data class UserSettings(
      * Порожній список — авто-скан полиці вимкнено, доки користувач не вкаже папку.
      */
     val libraryRootUris: List<String> = emptyList(),
+    /** Тека для щоденної автокопії (SAF tree URI). Порожньо — автокопію вимкнено. */
+    val autoBackupTreeUri: String = "",
+    /** Коли востаннє вдалося записати автокопію (мс), 0 — ще жодного разу. */
+    val autoBackupLastTime: Long = 0L,
+    /** Остання спроба автокопії не вдалася (теку видалено, доступ втрачено, немає місця). */
+    val autoBackupFailed: Boolean = false,
+    /** Денна ціль прослуховування в хвилинах (0 — вимкнено). */
+    val dailyGoalMinutes: Int = 0,
 )
 
 /**
@@ -157,7 +165,7 @@ class UserPrefs(context: Context, private val secrets: SecretStore) {
      * (без звертання до Play), а далі перезаписується справжнім станом покупки,
      * коли SettingsViewModel підключає біллінг.
      */
-    private val proEntitled = MutableStateFlow(false)
+    private val proEntitled = MutableStateFlow(BuildConfig.IS_FOSS)
 
     fun setProEntitled(value: Boolean) {
         proEntitled.value = value
@@ -232,6 +240,10 @@ class UserPrefs(context: Context, private val secrets: SecretStore) {
             secretsEncrypted = encrypted,
             isPro = pro,
             libraryRootUris = (p[LIBRARY_ROOTS] ?: emptySet()).sorted(),
+            autoBackupTreeUri = p[AUTO_BACKUP_TREE] ?: "",
+            autoBackupLastTime = p[AUTO_BACKUP_LAST] ?: 0L,
+            autoBackupFailed = p[AUTO_BACKUP_FAILED] ?: false,
+            dailyGoalMinutes = (p[DAILY_GOAL_MINUTES] ?: 0).coerceIn(0, 480),
         )
     }
 
@@ -289,6 +301,7 @@ class UserPrefs(context: Context, private val secrets: SecretStore) {
     suspend fun setNightTimerStart(minute: Int) { store.edit { it[NIGHT_TIMER_START] = minute.coerceIn(0, 24 * 60 - 1) } }
     suspend fun setNightTimerEnd(minute: Int) { store.edit { it[NIGHT_TIMER_END] = minute.coerceIn(0, 24 * 60 - 1) } }
     suspend fun setNightTimerMinutes(minutes: Int) { store.edit { it[NIGHT_TIMER_MINUTES] = minutes.coerceIn(5, 180) } }
+    suspend fun setDailyGoalMinutes(minutes: Int) { store.edit { it[DAILY_GOAL_MINUTES] = minutes.coerceIn(0, 480) } }
 
     /**
      * Додати головну папку бібліотеки. Повертає false, якщо вже є або досягнуто
@@ -343,6 +356,22 @@ class UserPrefs(context: Context, private val secrets: SecretStore) {
         }
     }
 
+    /** Нова тека автокопії скидає й час, і помилку: вони стосувалися попередньої. */
+    suspend fun setAutoBackupTree(uri: String) {
+        store.edit {
+            it[AUTO_BACKUP_TREE] = uri
+            it[AUTO_BACKUP_LAST] = 0L
+            it[AUTO_BACKUP_FAILED] = false
+        }
+    }
+
+    suspend fun setAutoBackupResult(success: Boolean, timeMs: Long) {
+        store.edit {
+            if (success) it[AUTO_BACKUP_LAST] = timeMs
+            it[AUTO_BACKUP_FAILED] = !success
+        }
+    }
+
     suspend fun setWebDavAuthFailed(failed: Boolean) {
         store.edit { it[WEBDAV_AUTH_FAILED] = failed }
     }
@@ -377,7 +406,7 @@ class UserPrefs(context: Context, private val secrets: SecretStore) {
         secretsEncrypted.value = secrets.warmUp()
         // Кеш ліцензії, а не запит до Play: сервіс відтворення може підняти процес
         // без жодного екрана, і межа Freemium має діяти вже там.
-        proEntitled.value = secrets.isProCached()
+        proEntitled.value = BuildConfig.IS_FOSS || secrets.isProCached()
         store.edit { prefs ->
             val leftover = prefs[WEBDAV_PASS]
             if (!leftover.isNullOrBlank() && secrets.getWebDavPassword().isBlank()) {
@@ -433,8 +462,12 @@ class UserPrefs(context: Context, private val secrets: SecretStore) {
         private val WEBDAV_PASS = stringPreferencesKey("webdav_pass")
         private val WEBDAV_AUTO = booleanPreferencesKey("webdav_auto")
         private val WEBDAV_LAST_SYNC = longPreferencesKey("webdav_last_sync")
+        private val AUTO_BACKUP_TREE = stringPreferencesKey("auto_backup_tree")
+        private val AUTO_BACKUP_LAST = longPreferencesKey("auto_backup_last")
+        private val AUTO_BACKUP_FAILED = booleanPreferencesKey("auto_backup_failed")
         private val WEBDAV_AUTH_FAILED = booleanPreferencesKey("webdav_auth_failed")
         private val LIBRARY_ROOTS = stringSetPreferencesKey("library_root_uris")
+        private val DAILY_GOAL_MINUTES = intPreferencesKey("daily_goal_minutes")
     }
 }
 

@@ -276,6 +276,9 @@ data class WeeklyStats(
     val weekMs: Long = 0L,
     val completedBooks: Int = 0,
     val dailyActivity: List<DayActivity> = emptyList(),
+    val currentStreakDays: Int = 0,
+    val longestStreakDays: Int = 0,
+    val totalDays: Int = 0,
 )
 
 data class BookWithChapters(

@@ -213,4 +213,29 @@ class ZipBookExtractorTest {
         assertTrue(out.all { !it.file.name.contains(':') && !it.file.name.contains('*') && !it.file.name.contains('?') })
         assertTrue(out.all { it.file.name.endsWith(".mp3") })
     }
+
+    @Test
+    fun extractsBestCoverImageIntoMemoryWhileWritingOnlyAudioToDisk() {
+        val folderCover = byteArrayOf(10, 20, 30)
+        val mainCover = byteArrayOf(42, 43, 44, 45)
+        val bytes = zip {
+            it.add("Book/back.png", byteArrayOf(1, 2))
+            it.add("Book/folder.jpg", folderCover)
+            it.add("Book/cover.jpg", mainCover)
+            it.add("Book/01.mp3")
+        }
+        val ext = ZipBookExtractor(
+            destDir = dest,
+            freeSpace = { Long.MAX_VALUE },
+            keepFreeBytes = 0L,
+            isAudio = AudioImporter::isAudioName,
+            skipPath = AudioImporter::isJunkPath,
+            isImage = AudioImporter::isImageName,
+        )
+        val out = ext.extract { ByteArrayInputStream(bytes) }
+
+        assertEquals(1, out.size)
+        assertEquals("на диск має лягти лише аудіофайл", 1, dest.listFiles()!!.size)
+        org.junit.Assert.assertArrayEquals("cover.jpg має виграти у folder.jpg і back.png", mainCover, ext.coverBytes)
+    }
 }

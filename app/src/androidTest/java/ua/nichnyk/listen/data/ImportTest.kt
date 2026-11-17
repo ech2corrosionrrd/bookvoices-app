@@ -147,6 +147,31 @@ class ImportTest {
     }
 
     @Test
+    fun zipArchivePicksUpCoverImageFromArchive() = runBlocking {
+        val coverBytes = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xD9.toByte())
+        val zip = zipOf(
+            "book_with_cover.zip",
+            listOf(
+                "Книга/1.wav" to TestAudio.writeWav(File(workDir, "src_c1.wav"), 1).readBytes(),
+                "Книга/cover.jpg" to coverBytes,
+            ),
+        )
+        val importsDir = File(context.filesDir, "imports")
+        val before = importsDir.listFiles()?.size ?: 0
+
+        val outcome = repo.importUris(listOf(zip.toUri()))
+        val book = db.library().getBook(outcome.single!!.id)!!
+        val coverPath = book.book.coverPath
+
+        assertNotNull("обкладинка з архіву має бути збережена", coverPath)
+        assertTrue("обкладинка з архіву має бути .jpg, а не згенерованою .png", coverPath!!.endsWith(".jpg"))
+        assertEquals(coverBytes.toList(), File(coverPath).readBytes().toList())
+        assertEquals("у сховище імпорту має потрапити лише аудіофайл", before + 1, importsDir.listFiles()!!.size)
+
+        repo.deleteBook(book.book.id)
+    }
+
+    @Test
     fun zipWithoutAudioFailsWithAMessageAndLeavesNoFiles() = runBlocking {
         val zip = zipOf("empty.zip", listOf("readme.txt" to "нічого".toByteArray()))
         val importsDir = File(context.filesDir, "imports")

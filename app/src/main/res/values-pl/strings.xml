@@ -119,7 +119,22 @@
     <string name="section_backup">Kopia zapasowa</string>
     <string name="backup_desc">Zapisz zakładki, tagi, historię i pozycje do pliku JSON. Przywrócenie zastępuje obecną półkę (pliki audio pozostają na swoim miejscu). Kolejka odtwarzania i foldery biblioteki nie są zapisywane w pliku.</string>
     <string name="btn_backup">Utwórz kopię</string>
+    <string name="btn_backup_save">Zapisz do pliku</string>
+    <string name="backup_save_failed">Nie udało się zapisać pliku</string>
+    <string name="file_saved">Plik zapisany</string>
     <string name="btn_restore">Przywróć</string>
+    <string name="auto_backup_title">Automatyczna kopia do folderu</string>
+    <string name="auto_backup_desc">Raz dziennie aplikacja sama zapisuje kopię w wybranym folderze i trzyma ostatnie 7. Wybierz folder na karcie pamięci albo taki, który synchronizuje Dysk Google lub inna aplikacja — wtedy postęp i zakładki przetrwają utratę telefonu. Przywróć przyciskiem „Przywróć” powyżej.</string>
+    <string name="auto_backup_pick">Wybierz folder</string>
+    <string name="auto_backup_change">Zmień folder</string>
+    <string name="auto_backup_now">Zapisz teraz</string>
+    <string name="auto_backup_off">Wyłącz</string>
+    <string name="auto_backup_folder">Folder: %s</string>
+    <string name="auto_backup_last">Ostatnia kopia: %s</string>
+    <string name="auto_backup_never">Pierwsza kopia pojawi się za minutę</string>
+    <string name="auto_backup_failed">Nie udało się zapisać kopii. Folder mógł zostać usunięty lub utracono do niego dostęp — wybierz folder ponownie.</string>
+    <string name="auto_backup_saved">Kopia zapisana</string>
+    <string name="auto_backup_pick_failed">Nie udało się uzyskać dostępu do tego folderu</string>
     <string name="backup_restored_success">Półka została przywrócona z kopii.</string>
     <string name="backup_restore_failed">Błąd odczytu pliku kopii zapasowej</string>
     <string name="section_cloud">Synchronizacja w chmurze (WebDAV)</string>
@@ -143,6 +158,18 @@
 
     <string name="version_format">Wersja %s</string>
     <string name="rate_app">Oceń BookVoices w Google Play</string>
+    <string name="share_log">Udostępnij dziennik diagnostyczny</string>
+    <string name="share_log_desc">Tylko wpisy BookVoices, bez ścieżek do plików. Nic nie jest wysyłane automatycznie.</string>
+    <string name="report_problem">Zgłoś problem</string>
+    <string name="report_problem_desc">Coś nie działa? Napisz do twórcy. Do wiadomości dołączony zostanie dziennik diagnostyczny bez tytułów książek i ścieżek plików — zobaczysz wszystko przed wysłaniem.</string>
+    <string name="report_by_email">Napisz e-mail</string>
+    <string name="report_on_github">GitHub</string>
+    <string name="report_email_subject">BookVoices %1$s: problem</string>
+    <string name="report_email_body">Co się stało:\n\n\nCo robiłeś tuż przed tym:\n\n</string>
+    <string name="report_issue_title">Problem w BookVoices</string>
+    <string name="report_no_email_app">Nie znaleziono aplikacji pocztowej. Spróbuj GitHub.</string>
+    <string name="report_no_browser">Nie udało się otworzyć przeglądarki.</string>
+    <string name="shortcut_resume_long">Kontynuuj „%1$s”</string>
     <string name="seconds_format">%d s</string>
     <string name="minutes_format">%d min</string>
     <string name="btn_start">Rozpocznij</string>
@@ -179,6 +206,23 @@
     <string name="new_book_title">Nowa książka</string>
     <string name="chapter_word">Rozdział</string>
     <string name="chapter_number">Rozdział %1$d</string>
+    <string name="chapters_number_action">Ponumeruj</string>
+    <string name="chapter_rename_hint">Przytrzymaj rozdział, aby zmienić jego nazwę</string>
+    <string name="chapter_rename_title">Zmień nazwę rozdziału</string>
+    <string name="chapters_number_confirm_title">Ponumerować rozdziały?</string>
+    <string name="chapters_numbered_none">Rozdziały są już ponumerowane</string>
+    <plurals name="chapters_number_confirm_msg">
+        <item quantity="one">Nazwy wszystkich %1$d rozdziałów zmienią się na „%2$s”, „%3$s” i tak dalej. Stare nazwy nie są zachowywane.</item>
+        <item quantity="few">Nazwy wszystkich %1$d rozdziałów zmienią się na „%2$s”, „%3$s” i tak dalej. Stare nazwy nie są zachowywane.</item>
+        <item quantity="many">Nazwy wszystkich %1$d rozdziałów zmienią się na „%2$s”, „%3$s” i tak dalej. Stare nazwy nie są zachowywane.</item>
+        <item quantity="other">Nazwy wszystkich %1$d rozdziałów zmienią się na „%2$s”, „%3$s” i tak dalej. Stare nazwy nie są zachowywane.</item>
+    </plurals>
+    <plurals name="chapters_numbered">
+        <item quantity="one">Zmieniono nazwę %d rozdziału</item>
+        <item quantity="few">Zmieniono nazwy %d rozdziałów</item>
+        <item quantity="many">Zmieniono nazwy %d rozdziałów</item>
+        <item quantity="other">Zmieniono nazwy %d rozdziału</item>
+    </plurals>
     <string name="demo_book_title">BookVoices. Wprowadzenie</string>
     <string name="demo_book_author">BookVoices</string>
     <string name="import_no_space">Za mało wolnego miejsca, aby skopiować plik</string>
@@ -381,8 +425,8 @@
     <string name="export_catalog_exported_at">Wyeksportowano: %s</string>
     <string name="export_catalog_total_books">Łącznie książek: %d</string>
     <string name="export_catalog_total_duration">Całkowity czas: %s</string>
-    <string name="auto_bookmark_bluetooth">Auto-zakładka przy rozłączeniu Bluetooth</string>
-    <string name="auto_bookmark_bluetooth_desc">Automatycznie zapisuje zakładkę po odłączeniu słuchawek lub auta</string>
+    <string name="auto_bookmark_bluetooth">Auto-zakładka przy odłączeniu słuchawek</string>
+    <string name="auto_bookmark_bluetooth_desc">Zapisuje zakładkę, gdy dźwięk urywa Bluetooth albo słuchawki przewodowe</string>
     <string name="resume_on_reconnect">Wznów po ponownym podłączeniu słuchawek</string>
     <string name="resume_on_reconnect_desc">Po krótkim rozłączeniu (do 15 minut) odtwarzanie wznowi się, gdy słuchawki lub samochód połączą się ponownie</string>
     <string name="bookmark_bluetooth_disconnected">Rozłączenie Bluetooth o %s</string>
@@ -394,7 +438,7 @@
     <string name="pro_lifetime_desc">Dożywotnia licencja premium bez opłat cyklicznych</string>
     <string name="pro_benefit_skip_silence">Dynamiczne pomijanie ciszy i pauz</string>
     <string name="pro_benefit_volume_boost">Sprzętowe wzmocnienie dźwięku Volume Boost (+6 dB)</string>
-    <string name="pro_benefit_bluetooth">Auto-zakładka przy rozłączeniu Bluetooth</string>
+    <string name="pro_benefit_bluetooth">Auto-zakładka przy odłączeniu słuchawek</string>
     <string name="pro_benefit_equalizer">Korektor głosu i korekcja wysokości tonu</string>
     <string name="pro_benefit_characters">Lista postaci dla każdej książki</string>
     <string name="pro_locked">💎 Dostępne w Pro</string>
@@ -436,4 +480,19 @@
     <string name="mark_finished">Oznacz jako wysłuchaną</string>
     <string name="mark_unfinished">Usuń oznaczenie „wysłuchana”</string>
     <string name="pro_benefit_pitch">Regulacja wysokości głosu</string>
+    <string name="queue_move_up">Przesuń w górę</string>
+    <string name="queue_move_down">Przesuń w dół</string>
+    <string name="share_book_summary">Udostępnij podsumowanie książki</string>
+    <string name="change_cover">Zmień okładkę</string>
+    <string name="export_history_csv">Eksportuj historię słuchania (CSV)</string>
+    <string name="stats_streak_current">Seria: %d dni</string>
+    <string name="stats_streak_best">Rekord: %d dni</string>
+    <string name="daily_goal_title">Cel dzienny</string>
+    <string name="daily_goal_off">Wyłączony</string>
+    <string name="daily_goal_set">Ustaw cel dzienny</string>
+    <string name="daily_goal_progress">Dziś: %1$s / %2$s</string>
+    <string name="ab_repeat_title">Powtarzanie A–B</string>
+    <string name="ab_repeat_waiting_b">A: %s → dotknij dla B</string>
+    <string name="ab_repeat_active">A–B: %1$s – %2$s</string>
+    <string name="pro_benefit_ab_repeat">Powtarzanie fragmentu A–B</string>
 </resources>

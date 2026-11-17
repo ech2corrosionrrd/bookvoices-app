@@ -24,11 +24,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
+import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.CloudDownload
 import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.FolderOpen
+import androidx.compose.material.icons.outlined.Save
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material3.AlertDialog
@@ -39,6 +41,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedIconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -75,6 +78,7 @@ import ua.nichnyk.listen.data.AddLibraryRootResult
 import ua.nichnyk.listen.data.HeadsetAction
 import ua.nichnyk.listen.data.UserPrefs
 import ua.nichnyk.listen.data.formatSpeed
+import ua.nichnyk.listen.ui.rememberSaveTextToFile
 import ua.nichnyk.listen.ui.shareText
 import ua.nichnyk.listen.ui.theme.dividerLine
 
@@ -96,7 +100,7 @@ fun SettingsScreen(
     val successMsg = stringResource(R.string.backup_restored_success)
     val failMsg = stringResource(R.string.backup_restore_failed)
     val backupFailedMsg = stringResource(R.string.share_failed)
-    var confirmRestore by remember { mutableStateOf(false) }
+    var confirmRestore by rememberSaveable { mutableStateOf(false) }
 
     // Позначка платної фічі. Сам запобіжник живе в UserPrefs (значення приходять
     // уже замаскованими), тут лише видимий стан і шлях до paywall.
@@ -125,6 +129,27 @@ fun SettingsScreen(
             }
         }
     }
+
+    // «Зберегти у файл» для бекапу, історії й каталогу — системний вибір місця замість
+    // вікна «Поділитися», яке MIUI у горизонтальній орієнтації спустошує (див. SaveToFile.kt).
+    val backupSavedMsg = stringResource(R.string.auto_backup_saved)
+    val fileSavedMsg = stringResource(R.string.file_saved)
+    val saveFailedMsg = stringResource(R.string.backup_save_failed)
+    val saveBackup = rememberSaveTextToFile(
+        mimeType = "application/json",
+        produce = { vm.exportBackupJson() },
+        onResult = { ok -> snack.showSnackbar(if (ok) backupSavedMsg else saveFailedMsg) },
+    )
+    val saveHistoryCsv = rememberSaveTextToFile(
+        mimeType = "text/csv",
+        produce = { vm.exportHistoryCsv() },
+        onResult = { ok -> snack.showSnackbar(if (ok) fileSavedMsg else saveFailedMsg) },
+    )
+    val saveCatalog = rememberSaveTextToFile(
+        mimeType = "text/markdown",
+        produce = { vm.exportCatalogMarkdown() },
+        onResult = { ok -> snack.showSnackbar(if (ok) fileSavedMsg else saveFailedMsg) },
+    )
 
     val libraryRootAdded = stringResource(R.string.library_roots_added)
     val libraryRootDuplicate = stringResource(R.string.library_roots_duplicate)
@@ -170,7 +195,8 @@ fun SettingsScreen(
         Text(stringResource(R.string.settings_subtitle), color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(Spacing.l))
 
-        // --- Pro Banner ---
+        // --- Pro Banner (лише у Play-збірці; у FOSS усі функції відкриті одразу) ---
+        if (!ua.nichnyk.listen.BuildConfig.IS_FOSS) {
         androidx.compose.material3.Surface(
             shape = CardShape,
             color = if (isPro) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer,
@@ -202,6 +228,7 @@ fun SettingsScreen(
         }
 
         Spacer(Modifier.height(Spacing.xxl))
+        }
 
         // --- 1. Вигляд та Тема ---
         Text(stringResource(R.string.section_appearance), style = MaterialTheme.typography.headlineSmall)
@@ -733,6 +760,15 @@ fun SettingsScreen(
             }
 
             OutlinedButton(
+                onClick = { saveBackup(ua.nichnyk.listen.data.FolderBackup.fileName(java.time.LocalDate.now())) },
+                contentPadding = ButtonDefaults.ButtonWithIconContentPadding,
+            ) {
+                Icon(Icons.Outlined.Save, contentDescription = null)
+                Spacer(Modifier.width(Spacing.s))
+                Text(stringResource(R.string.btn_backup_save))
+            }
+
+            OutlinedButton(
                 onClick = { confirmRestore = true },
                 contentPadding = ButtonDefaults.ButtonWithIconContentPadding,
             ) {
@@ -742,28 +778,150 @@ fun SettingsScreen(
             }
         }
 
+        // --- Автокопія в теку ---
+        Spacer(Modifier.height(Spacing.l))
+        Text(stringResource(R.string.auto_backup_title), style = MaterialTheme.typography.titleMedium)
+        Text(
+            stringResource(R.string.auto_backup_desc),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(Spacing.s))
+        val autoBackupSaved = stringResource(R.string.auto_backup_saved)
+        val autoBackupFailedMsg = stringResource(R.string.auto_backup_failed)
+        val autoBackupPickFailed = stringResource(R.string.auto_backup_pick_failed)
+        val pickBackupFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+            if (uri == null) return@rememberLauncherForActivityResult
+            vm.setAutoBackupFolder(context.applicationContext, uri) { ok ->
+                if (!ok) scope.launch { snack.showSnackbar(autoBackupPickFailed) }
+            }
+        }
+        val backupTree = s.autoBackupTreeUri
+        if (backupTree.isNotBlank()) {
+            // Ім'я теки — запит до провайдера документів, тож не на головному потоці.
+            // Початкове "" означає «ще перевіряємо»; null після перевірки — теки немає або доступ втрачено.
+            val folder by androidx.compose.runtime.produceState<String?>("", backupTree) {
+                value = withContext(Dispatchers.IO) {
+                    ua.nichnyk.listen.data.FolderBackup.folderName(context, backupTree)
+                }
+            }
+            folder?.takeIf { it.isNotEmpty() }?.let {
+                Text(stringResource(R.string.auto_backup_folder, it), style = MaterialTheme.typography.bodyMedium)
+            }
+            val folderBroken = s.autoBackupFailed || folder == null
+            val statusText = when {
+                folderBroken -> stringResource(R.string.auto_backup_failed)
+                s.autoBackupLastTime > 0L -> {
+                    val fmt = java.text.SimpleDateFormat(
+                        "d MMM, HH:mm",
+                        androidx.compose.ui.platform.LocalLocale.current.platformLocale,
+                    )
+                    stringResource(R.string.auto_backup_last, fmt.format(java.util.Date(s.autoBackupLastTime)))
+                }
+                else -> stringResource(R.string.auto_backup_never)
+            }
+            Text(
+                statusText,
+                style = MaterialTheme.typography.labelMedium,
+                color = if (folderBroken) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(top = Spacing.xxs),
+            )
+            Spacer(Modifier.height(Spacing.s))
+            var backingUp by remember { mutableStateOf(false) }
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(Spacing.m),
+                verticalArrangement = Arrangement.spacedBy(Spacing.s),
+            ) {
+                FilledTonalButton(
+                    enabled = !backingUp,
+                    onClick = {
+                        val app = context.applicationContext as? ua.nichnyk.listen.ListenApp ?: return@FilledTonalButton
+                        scope.launch {
+                            backingUp = true
+                            val ok = vm.autoBackupNow(app)
+                            backingUp = false
+                            snack.showSnackbar(if (ok) autoBackupSaved else autoBackupFailedMsg)
+                        }
+                    },
+                ) { Text(stringResource(R.string.auto_backup_now)) }
+                OutlinedButton(onClick = { runCatching { pickBackupFolder.launch(null) } }) {
+                    Text(stringResource(R.string.auto_backup_change))
+                }
+                TextButton(onClick = vm::disableAutoBackup) { Text(stringResource(R.string.auto_backup_off)) }
+            }
+        } else {
+            OutlinedButton(
+                onClick = {
+                    runCatching { pickBackupFolder.launch(null) }
+                        .onFailure { scope.launch { snack.showSnackbar(filePickerUnavailable) } }
+                },
+                contentPadding = ButtonDefaults.ButtonWithIconContentPadding,
+            ) {
+                Icon(Icons.Outlined.FolderOpen, contentDescription = null)
+                Spacer(Modifier.width(Spacing.s))
+                Text(stringResource(R.string.auto_backup_pick))
+            }
+        }
+
         Spacer(Modifier.height(Spacing.m))
         val shareFailedMsg = stringResource(R.string.share_failed)
-        OutlinedButton(
-            onClick = {
-                scope.launch {
-                    // Через shareText, а не EXTRA_TEXT: каталог великої полиці не
-                    // вміщався в транзакцію Binder і знімав застосунок.
-                    val ok = context.shareText(
-                        text = vm.exportCatalogMarkdown(),
-                        fileName = "bookvoices-catalog.md",
-                        mimeType = "text/plain",
-                        subject = "BookVoices Catalog",
-                    )
-                    if (!ok) snack.showSnackbar(shareFailedMsg)
-                }
-            },
-            modifier = Modifier.fillMaxWidth(),
-            contentPadding = ButtonDefaults.ButtonWithIconContentPadding,
-        ) {
-            Icon(Icons.AutoMirrored.Outlined.MenuBook, contentDescription = null)
+        val saveToFileLabel = stringResource(R.string.btn_backup_save)
+        // Кожен експорт — «Поділитися» (широка кнопка) і поруч «Зберегти у файл» (іконка).
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            OutlinedButton(
+                onClick = {
+                    scope.launch {
+                        // Через shareText, а не EXTRA_TEXT: каталог великої полиці не
+                        // вміщався в транзакцію Binder і знімав застосунок.
+                        val ok = context.shareText(
+                            text = vm.exportCatalogMarkdown(),
+                            fileName = "bookvoices-catalog.md",
+                            mimeType = "text/plain",
+                            subject = "BookVoices Catalog",
+                        )
+                        if (!ok) snack.showSnackbar(shareFailedMsg)
+                    }
+                },
+                modifier = Modifier.weight(1f),
+                contentPadding = ButtonDefaults.ButtonWithIconContentPadding,
+            ) {
+                Icon(Icons.AutoMirrored.Outlined.MenuBook, contentDescription = null)
+                Spacer(Modifier.width(Spacing.s))
+                Text(stringResource(R.string.export_catalog))
+            }
             Spacer(Modifier.width(Spacing.s))
-            Text(stringResource(R.string.export_catalog))
+            OutlinedIconButton(onClick = { saveCatalog("bookvoices-catalog.md") }) {
+                Icon(Icons.Outlined.Save, contentDescription = saveToFileLabel)
+            }
+        }
+
+        Spacer(Modifier.height(Spacing.s))
+        val exportHistorySubject = stringResource(R.string.export_history_csv)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            OutlinedButton(
+                onClick = {
+                    scope.launch {
+                        val ok = context.shareText(
+                            text = vm.exportHistoryCsv(),
+                            fileName = "bookvoices-history.csv",
+                            mimeType = "text/csv",
+                            subject = exportHistorySubject,
+                            chooserTitle = exportHistorySubject,
+                        )
+                        if (!ok) snack.showSnackbar(shareFailedMsg)
+                    }
+                },
+                modifier = Modifier.weight(1f),
+                contentPadding = ButtonDefaults.ButtonWithIconContentPadding,
+            ) {
+                Icon(Icons.Outlined.History, contentDescription = null)
+                Spacer(Modifier.width(Spacing.s))
+                Text(exportHistorySubject)
+            }
+            Spacer(Modifier.width(Spacing.s))
+            OutlinedIconButton(onClick = { saveHistoryCsv("bookvoices-history.csv") }) {
+                Icon(Icons.Outlined.Save, contentDescription = saveToFileLabel)
+            }
         }
 
         Spacer(Modifier.height(Spacing.xxl))
@@ -983,6 +1141,59 @@ fun SettingsScreen(
             Icon(Icons.Outlined.Star, contentDescription = null)
             Spacer(Modifier.width(Spacing.xs))
             Text(stringResource(R.string.rate_app))
+        }
+
+        // «Повідомити про проблему»: лист розробнику з журналом або Issue на GitHub.
+        Spacer(Modifier.height(Spacing.l))
+        Text(stringResource(R.string.report_problem), style = MaterialTheme.typography.titleMedium)
+        Text(
+            stringResource(R.string.report_problem_desc),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(Spacing.s))
+        val noEmailApp = stringResource(R.string.report_no_email_app)
+        val noBrowser = stringResource(R.string.report_no_browser)
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(Spacing.m),
+            verticalArrangement = Arrangement.spacedBy(Spacing.s),
+        ) {
+            FilledTonalButton(onClick = {
+                scope.launch {
+                    if (!ua.nichnyk.listen.ui.ReportProblem.byEmail(context)) snack.showSnackbar(noEmailApp)
+                }
+            }) { Text(stringResource(R.string.report_by_email)) }
+            OutlinedButton(onClick = {
+                if (!ua.nichnyk.listen.ui.ReportProblem.onGitHub(context)) scope.launch { snack.showSnackbar(noBrowser) }
+            }) { Text(stringResource(R.string.report_on_github)) }
+        }
+
+        // Локальна діагностика: власний logcat без шляхів і URI, через системне
+        // «Поділитися». Нічого не йде в мережу без вибору слухача.
+        Spacer(Modifier.height(Spacing.m))
+        Text(
+            stringResource(R.string.share_log_desc),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(Spacing.xs))
+        OutlinedButton(
+            onClick = {
+                scope.launch {
+                    val ok = context.shareText(
+                        text = ua.nichnyk.listen.DiagnosticLog.build(),
+                        fileName = "bookvoices-log.txt",
+                        mimeType = "text/plain",
+                        subject = "BookVoices diagnostic log",
+                    )
+                    if (!ok) snack.showSnackbar(shareFailedMsg)
+                }
+            },
+            contentPadding = ButtonDefaults.ButtonWithIconContentPadding,
+        ) {
+            Icon(Icons.Outlined.BugReport, contentDescription = null)
+            Spacer(Modifier.width(Spacing.xs))
+            Text(stringResource(R.string.share_log))
         }
 
         // Лише debug: Play Billing відповідає тільки застосунку, встановленому з

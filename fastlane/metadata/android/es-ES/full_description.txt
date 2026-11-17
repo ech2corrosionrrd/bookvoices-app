@@ -1,0 +1,40 @@
+BookVoices es un reproductor de audiolibros para tu propia colección. Añade una carpeta con archivos mp3, m4b, ogg o flac y continúa justo donde lo dejaste. Sin cuenta, sin anuncios, sin suscripción; tus archivos se quedan en tu teléfono.
+
+ESCUCHAR
+• mp3, m4b, ogg, flac y opus; capítulos de m4b, ID3 y CUE, y carpetas anidadas CD1/CD2
+• Cambia el nombre de los capítulos o numéralos tras confirmar
+• Continúa donde lo dejaste, retroceso inteligente tras una pausa
+• Velocidad de reproducción, saltos, gestos opcionales con el botón de los auriculares
+• Temporizador de apagado: minutos, fin del capítulo o del libro, agita para alargarlo; un horario nocturno lo activa solo
+• Marcador con un toque desde el panel de notificaciones; notas en los marcadores y búsqueda entre ellos
+• Reanuda al volver a conectar los auriculares (opcional)
+• Cola de reproducción para varios libros seguidos
+• Reproducción en segundo plano, widget en la pantalla de inicio, controles en la pantalla de bloqueo y en la notificación
+• Acceso directo «Continuar» en el icono y mosaico en los ajustes rápidos para reproducir o pausar
+
+BIBLIOTECA
+• Estantería con portadas, búsqueda, etiquetas, series y favoritos fijados
+• Vista de cuadrícula o lista compacta, cómoda incluso con cien libros
+• Importa una carpeta, archivos sueltos o un archivo ZIP (ábrelo directamente desde tu gestor de archivos); portada propia
+• Reconoce «Autor - Título» en los nombres de carpeta, con pantalla de autor
+• Búsqueda rápida de varias palabras sin distinguir mayúsculas, tildes ni apóstrofos
+• Añade automáticamente libros nuevos de las carpetas que elijas
+• Marca los libros cuyos archivos han desaparecido
+
+ESTADÍSTICAS Y DATOS
+• Historial de escucha con gráficos semanales, mensuales y anuales
+• Copia de seguridad del progreso en JSON o en tu propio servidor WebDAV; sincronización entre teléfono y tableta sin libros duplicados
+• Copia de seguridad diaria automática en la carpeta que elijas (las 7 últimas)
+• Racha de días de escucha, meta diaria y exportación del historial a CSV
+• Exporta tu catálogo, marcadores y un resumen de cada libro en Markdown
+
+COMODIDAD
+• Temas Noche, Papel y negro puro OLED
+• Diseño cómodo con letra grande y en tabletas
+• 7 idiomas: English, Українська, Polski, Deutsch, Español, Français, Português (Brasil)
+
+Privacidad. Sin analíticas, sin rastreadores, sin registro. La app funciona sin conexión; la red solo se usa si activas tú mismo la copia de seguridad WebDAV.
+
+En esta versión todas las funciones Pro están desbloqueadas gratis: salto de silencios y pausas, amplificación de volumen por hardware (+6 dB), ecualizador de voz con corrección de tono, marcador automático al desconectar los auriculares, lista de personajes por libro y repetición A–B. En Google Play se venden como compra única: si te gusta la app, es una forma de apoyarla.
+
+BookVoices no vende ni transmite libros: reproduce los que ya tienes.

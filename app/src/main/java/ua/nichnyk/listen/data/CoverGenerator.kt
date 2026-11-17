@@ -2,6 +2,7 @@ package ua.nichnyk.listen.data
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.LinearGradient
 import android.graphics.Paint
@@ -34,6 +35,38 @@ class CoverGenerator(private val context: Context) {
             file.writeBytes(bytes)
             file.absolutePath
         }.onFailure { AppLog.w("CoverGenerator.fromEmbedded", it) }.getOrNull()
+    }
+
+    /**
+     * Обкладинка, вибрана користувачем вручну.
+     * Нове імʼя файла щоразу, щоб LruCache (CoverCache) одразу підхопив нове зображення.
+     */
+    fun fromCustomImage(id: String, bytes: ByteArray): String? {
+        if (bytes.isEmpty()) return null
+        return runCatching {
+            val decoded = runCatching {
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+                if (bounds.outWidth > 0 && bounds.outHeight > 0) {
+                    val maxDim = maxOf(bounds.outWidth, bounds.outHeight)
+                    val sample = (maxDim / 1024).coerceAtLeast(1)
+                    val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
+                } else null
+            }.getOrNull()
+
+            val dir = File(context.filesDir, "covers").apply { mkdirs() }
+            val file = File(dir, "$id-custom-${System.currentTimeMillis()}.jpg")
+            if (decoded != null) {
+                file.outputStream().use { out ->
+                    decoded.compress(Bitmap.CompressFormat.JPEG, 85, out)
+                }
+                decoded.recycle()
+            } else {
+                file.writeBytes(bytes)
+            }
+            file.absolutePath
+        }.onFailure { AppLog.w("CoverGenerator.fromCustomImage", it) }.getOrNull()
     }
 
     /**

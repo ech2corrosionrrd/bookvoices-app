@@ -41,10 +41,13 @@ import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.BookmarkAdd
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.KeyboardArrowUp
 import androidx.compose.material.icons.outlined.Pause
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Remove
+import androidx.compose.material.icons.outlined.Repeat
 import androidx.compose.material.icons.outlined.Timer
 import ua.nichnyk.listen.ui.theme.cardSurface
 import ua.nichnyk.listen.ui.theme.Spacing
@@ -82,6 +85,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.State
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -105,6 +109,7 @@ import kotlinx.coroutines.launch
 import ua.nichnyk.listen.R
 import ua.nichnyk.listen.data.formatClock
 import ua.nichnyk.listen.data.formatSpeed
+import ua.nichnyk.listen.playback.AbLoopState
 import ua.nichnyk.listen.playback.JumpBackTarget
 import ua.nichnyk.listen.playback.PlaybackTick
 import ua.nichnyk.listen.playback.PlayerUiState
@@ -184,9 +189,9 @@ fun PlayerScreen(
     val scope = rememberCoroutineScope()
     val bmSavedMsg = stringResource(R.string.bookmark_saved)
     val bmFailedMsg = stringResource(R.string.bookmark_failed)
-    var sheet by remember { mutableStateOf<Sheet?>(null) }
-    var bookmarkDialogOpen by remember { mutableStateOf(false) }
-    var bookmarkNote by remember { mutableStateOf("") }
+    var sheet by rememberSaveable { mutableStateOf<Sheet?>(null) }
+    var bookmarkDialogOpen by rememberSaveable { mutableStateOf(false) }
+    var bookmarkNote by rememberSaveable { mutableStateOf("") }
     var gestureHint by remember { mutableStateOf<GestureHint?>(null) }
     var gestureSeq by remember { mutableLongStateOf(0L) }
 
@@ -254,18 +259,22 @@ fun PlayerScreen(
 
         val openQueue = { sheet = Sheet.Queue }
         val openCharacters = { if (isPro) sheet = Sheet.Characters else onRequestPro() }
+        val toggleAbRepeat = { if (isPro) vm.toggleAbLoop() else onRequestPro() }
         val openChapters = { sheet = Sheet.Chapters }
         val openBookmark = {
             bookmarkNote = ""
             bookmarkDialogOpen = true
         }
+        val activeChapterLoop = state.abLoop?.takeIf { it.chapterIndex == state.chapterIndex }
 
         // Горизонтально місця під нижній ряд немає, тож дії лишаються зверху.
         val topActions: @Composable () -> Unit = {
             PlayerTopActions(
                 queueSize = state.queue.size,
                 isPro = isPro,
+                abLoop = activeChapterLoop,
                 onBack = onBack,
+                onAbLoop = toggleAbRepeat,
                 onQueue = openQueue,
                 onCharacters = openCharacters,
                 onChapters = openChapters,
@@ -356,10 +365,17 @@ fun PlayerScreen(
                         onDismiss = vm::dismissJumpBack,
                         modifier = Modifier.align(Alignment.CenterHorizontally),
                     )
+                    AbLoopChip(
+                        loop = activeChapterLoop,
+                        onToggle = vm::toggleAbLoop,
+                        onClear = vm::clearAbLoop,
+                        modifier = Modifier.align(Alignment.CenterHorizontally),
+                    )
 
                     ChapterProgress(
                         tick = tick,
                         markersMs = chapterMarks,
+                        abLoop = activeChapterLoop,
                         onSeek = vm::seek,
                         timeStyle = metrics.timeStyle,
                         modifier = Modifier.fillMaxWidth(),
@@ -386,7 +402,12 @@ fun PlayerScreen(
                     .fillMaxSize()
                     .padding(horizontal = Spacing.xl),
             ) {
-                PlayerBackBar(onBack)
+                PlayerBackBar(
+                    onBack = onBack,
+                    isPro = isPro,
+                    abLoop = activeChapterLoop,
+                    onAbLoop = toggleAbRepeat,
+                )
 
                 // Вміст по центру вільного місця: раніше він тулився до верху, а під
                 // ним лишалася порожня третина екрана. Коли вміст вищий за екран
@@ -437,11 +458,18 @@ fun PlayerScreen(
                         onDismiss = vm::dismissJumpBack,
                         modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = Spacing.s),
                     )
+                    AbLoopChip(
+                        loop = activeChapterLoop,
+                        onToggle = vm::toggleAbLoop,
+                        onClear = vm::clearAbLoop,
+                        modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = Spacing.s),
+                    )
 
                     Spacer(Modifier.height(Spacing.xl))
                     ChapterProgress(
                         tick = tick,
                         markersMs = chapterMarks,
+                        abLoop = activeChapterLoop,
                         onSeek = vm::seek,
                         timeStyle = metrics.timeStyle,
                         modifier = Modifier.fillMaxWidth(),
@@ -841,7 +869,7 @@ fun PlayerScreen(
                         )
                     } else {
                         LazyColumn(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
-                            itemsIndexed(state.queue, key = { _, b -> b.book.id }) { _, item ->
+                            itemsIndexed(state.queue, key = { _, b -> b.book.id }) { index, item ->
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -872,6 +900,35 @@ fun PlayerScreen(
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.primary,
                                         )
+                                    }
+                                    if (state.queue.size > 1) {
+                                        Column(
+                                            verticalArrangement = Arrangement.Center,
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                        ) {
+                                            IconButton(
+                                                onClick = { vm.moveQueueItem(index, index - 1) },
+                                                enabled = index > 0,
+                                                modifier = Modifier.size(36.dp),
+                                            ) {
+                                                Icon(
+                                                    Icons.Outlined.KeyboardArrowUp,
+                                                    contentDescription = stringResource(R.string.queue_move_up),
+                                                    modifier = Modifier.size(20.dp),
+                                                )
+                                            }
+                                            IconButton(
+                                                onClick = { vm.moveQueueItem(index, index + 1) },
+                                                enabled = index < state.queue.lastIndex,
+                                                modifier = Modifier.size(36.dp),
+                                            ) {
+                                                Icon(
+                                                    Icons.Outlined.KeyboardArrowDown,
+                                                    contentDescription = stringResource(R.string.queue_move_down),
+                                                    modifier = Modifier.size(20.dp),
+                                                )
+                                            }
+                                        }
                                     }
                                     IconButton(onClick = {
                                         vm.playQueueItem(item)
@@ -1031,10 +1088,48 @@ private fun PlayerCover(
 
 /** Лише «назад»: решта дій у вертикальній розкладці живе внизу, з підписами. */
 @Composable
-private fun PlayerBackBar(onBack: () -> Unit) {
+private fun PlayerBackBar(
+    onBack: () -> Unit,
+    isPro: Boolean,
+    abLoop: AbLoopState?,
+    onAbLoop: () -> Unit,
+) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = onBack) {
             Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = stringResource(R.string.back))
+        }
+        Spacer(Modifier.weight(1f))
+        AbRepeatIconButton(isPro = isPro, abLoop = abLoop, onClick = onAbLoop)
+    }
+}
+
+@Composable
+private fun AbRepeatIconButton(
+    isPro: Boolean,
+    abLoop: AbLoopState?,
+    onClick: () -> Unit,
+) {
+    IconButton(onClick = onClick) {
+        Box {
+            Icon(
+                Icons.Outlined.Repeat,
+                contentDescription = stringResource(R.string.ab_repeat_title),
+                tint = if (abLoop != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+            )
+            val badge = when {
+                !isPro -> "\uD83D\uDC8E"
+                abLoop?.isComplete == true -> "AB"
+                abLoop != null -> "A"
+                else -> null
+            }
+            if (badge != null) {
+                Text(
+                    text = badge,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.align(Alignment.TopEnd),
+                )
+            }
         }
     }
 }
@@ -1136,7 +1231,9 @@ private fun PlayerBottomAction(
 private fun PlayerTopActions(
     queueSize: Int,
     isPro: Boolean,
+    abLoop: AbLoopState?,
     onBack: () -> Unit,
+    onAbLoop: () -> Unit,
     onQueue: () -> Unit,
     onCharacters: () -> Unit,
     onChapters: () -> Unit,
@@ -1147,6 +1244,7 @@ private fun PlayerTopActions(
             Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = stringResource(R.string.back))
         }
         Spacer(Modifier.weight(1f))
+        AbRepeatIconButton(isPro = isPro, abLoop = abLoop, onClick = onAbLoop)
         IconButton(onClick = onQueue) {
             Box {
                 Icon(Icons.AutoMirrored.Outlined.PlaylistPlay, contentDescription = stringResource(R.string.queue_title))
@@ -1180,6 +1278,55 @@ private fun PlayerTopActions(
         }
         IconButton(onClick = onBookmark) {
             Icon(Icons.Outlined.BookmarkAdd, contentDescription = stringResource(R.string.bookmark))
+        }
+    }
+}
+
+@Composable
+private fun AbLoopChip(
+    loop: AbLoopState?,
+    onToggle: () -> Unit,
+    onClear: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    AnimatedVisibility(visible = loop != null, modifier = modifier) {
+        if (loop != null) {
+            val label = if (loop.endMs != null) {
+                stringResource(R.string.ab_repeat_active, loop.startMs.formatClock(), loop.endMs.formatClock())
+            } else {
+                stringResource(R.string.ab_repeat_waiting_b, loop.startMs.formatClock())
+            }
+            Surface(
+                shape = CardShape,
+                color = MaterialTheme.colorScheme.primaryContainer,
+                onClick = { if (loop.endMs == null) onToggle() else onClear() },
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(start = Spacing.m, end = Spacing.xxs, top = Spacing.hair, bottom = Spacing.hair),
+                ) {
+                    Icon(
+                        Icons.Outlined.Repeat,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Spacer(Modifier.width(Spacing.xs))
+                    Text(
+                        label,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
+                    IconButton(onClick = onClear, modifier = Modifier.size(24.dp)) {
+                        Icon(
+                            Icons.Outlined.Close,
+                            contentDescription = stringResource(R.string.cancel),
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.size(14.dp),
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -1363,6 +1510,7 @@ private fun ChapterProgress(
     markersMs: List<Long>,
     onSeek: (Long) -> Unit,
     timeStyle: TextStyle,
+    abLoop: AbLoopState? = null,
     // Ширину задає той, хто викликає, і задає явно: доти обидві копії були голим
     // `Column {}` і тримали повну ширину лише тому, що так їх міряв батько.
     // Типовим значенням тут якийсь час стояв `Modifier.fillMaxWidth()` — це
@@ -1394,14 +1542,32 @@ private fun ChapterProgress(
                 activeTrackColor = MaterialTheme.colorScheme.primary,
             ),
         )
-        // Крапки закладок під смужкою: видно, де в цьому розділі щось збережено.
-        // Малюємо під доріжкою, а не поверх неї, щоб не плутатися з бігунком.
-        if (markersMs.isNotEmpty() && now.durationMs > 0L) {
+        // Крапки закладок і межі повтору A–B під смужкою розділу.
+        if ((markersMs.isNotEmpty() || abLoop != null) && now.durationMs > 0L) {
             val dotColor = MaterialTheme.colorScheme.tertiary
+            val loopColor = MaterialTheme.colorScheme.primary
             Canvas(Modifier.matchParentSize()) {
                 val inset = 2.dp.toPx()
                 val usable = size.width - 2 * inset
                 val y = size.height / 2f + 16.dp.toPx()
+                if (abLoop != null) {
+                    val startX = inset + usable * (abLoop.startMs.toFloat() / now.durationMs).coerceIn(0f, 1f)
+                    if (abLoop.endMs != null) {
+                        val endX = inset + usable * (abLoop.endMs.toFloat() / now.durationMs).coerceIn(0f, 1f)
+                        drawLine(
+                            color = loopColor,
+                            start = androidx.compose.ui.geometry.Offset(startX, y),
+                            end = androidx.compose.ui.geometry.Offset(endX, y),
+                            strokeWidth = 3.dp.toPx(),
+                        )
+                    } else {
+                        drawCircle(
+                            color = loopColor,
+                            radius = 3.dp.toPx(),
+                            center = androidx.compose.ui.geometry.Offset(startX, y),
+                        )
+                    }
+                }
                 markersMs.forEach { ms ->
                     val fraction = (ms.toFloat() / now.durationMs).coerceIn(0f, 1f)
                     drawCircle(

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug-збірка стоїть поряд із версією з Play: інша назва, щоб не сплутати на робочому столі. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <application
+        android:label="BookVoices Debug"
+        tools:replace="android:label" />
+</manifest>

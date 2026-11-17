@@ -29,12 +29,20 @@ object DuplicateDetector {
     ): BookWithChapters? {
         val incomingUris = uris.toSet()
         val incomingPrint = fingerprint(chapterTitles, durations)
+        val durationsKnown = durations.isNotEmpty() && durations.all { it > 0 }
         return books.firstOrNull { book ->
             val existingUris = book.chapters.map { it.uri }.toSet()
             if (incomingUris.isNotEmpty() && existingUris == incomingUris) return@firstOrNull true
-            book.chapters.size == chapterTitles.size &&
+            // За номером: Room віддає глави без гарантованого порядку.
+            val chapters = book.chapters.sortedBy { it.index }
+            chapters.size == chapterTitles.size &&
                 book.book.title.equals(title, ignoreCase = true) &&
-                fingerprint(book.chapters.map { it.title }, book.chapters.map { it.durationMs }) == incomingPrint
+                (
+                    fingerprint(chapters.map { it.title }, chapters.map { it.durationMs }) == incomingPrint ||
+                        // Глави можна перейменувати на одному пристрої, і назви розійдуться.
+                        // Однакові відомі тривалості всіх глав тієї самої книги — досить.
+                        (durationsKnown && chapters.map { it.durationMs } == durations)
+                    )
         }
     }
 

@@ -51,6 +51,30 @@ class AvailabilityCacheTest {
     }
 
     @Test
+    fun differentFileSetsAreCachedSideBySide() = runBlocking {
+        val c = cache()
+        c.inaccessible(listOf("a"))
+        c.inaccessible(listOf("a", "b"))
+        // Повернення до першого набору не має зондувати наново.
+        c.inaccessible(listOf("a"))
+        c.inaccessible(listOf("b", "a"))
+        assertEquals(2, probes)
+    }
+
+    @Test
+    fun oldestSetIsEvictedBeyondLimit() = runBlocking {
+        val c = cache()
+        repeat(AvailabilityCache.MAX_ENTRIES + 1) { i -> c.inaccessible(listOf("f$i")) }
+        assertEquals(AvailabilityCache.MAX_ENTRIES + 1, probes)
+        // Найстаріший набір витіснено — потрібен новий зонд...
+        c.inaccessible(listOf("f0"))
+        assertEquals(AvailabilityCache.MAX_ENTRIES + 2, probes)
+        // ...а свіжий лишається в кеші.
+        c.inaccessible(listOf("f${AvailabilityCache.MAX_ENTRIES}"))
+        assertEquals(AvailabilityCache.MAX_ENTRIES + 2, probes)
+    }
+
+    @Test
     fun invalidateForcesNewProbe() = runBlocking {
         val c = cache()
         c.inaccessible(listOf("a"))

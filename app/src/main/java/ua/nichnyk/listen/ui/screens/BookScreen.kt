@@ -5,6 +5,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -38,8 +39,13 @@ import androidx.compose.material.icons.outlined.NoteAlt
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.RemoveDone
+import androidx.compose.material.icons.outlined.Share
 import ua.nichnyk.listen.ui.theme.Spacing
 import ua.nichnyk.listen.ui.components.CharactersBottomSheet
+import ua.nichnyk.listen.ui.shareText
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import kotlinx.coroutines.launch
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -63,6 +69,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -117,14 +124,24 @@ fun BookScreen(
         ActivityResultContracts.OpenDocumentTree(),
     ) { uri -> uri?.let { vm.appendTree(it) } }
 
-    var confirmDelete by remember { mutableStateOf(false) }
-    var renameOpen by remember { mutableStateOf(false) }
-    var appendSheetOpen by remember { mutableStateOf(false) }
-    var addTagDialogOpen by remember { mutableStateOf(false) }
-    var newTagText by remember { mutableStateOf("") }
-    var charactersSheetOpen by remember { mutableStateOf(false) }
-    var notesDialogOpen by remember { mutableStateOf(false) }
-    var notesDraft by remember { mutableStateOf("") }
+    val pickCoverImage = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent(),
+    ) { uri: Uri? -> if (uri != null) vm.updateCover(uri) }
+
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val shareTitle = stringResource(R.string.share_book_summary)
+    val changeCoverDesc = stringResource(R.string.change_cover)
+    var confirmDelete by rememberSaveable { mutableStateOf(false) }
+    var renameOpen by rememberSaveable { mutableStateOf(false) }
+    var renamingChapterId by rememberSaveable { mutableStateOf<String?>(null) }
+    var confirmNumbering by rememberSaveable { mutableStateOf(false) }
+    var appendSheetOpen by rememberSaveable { mutableStateOf(false) }
+    var addTagDialogOpen by rememberSaveable { mutableStateOf(false) }
+    var newTagText by rememberSaveable { mutableStateOf("") }
+    var charactersSheetOpen by rememberSaveable { mutableStateOf(false) }
+    var notesDialogOpen by rememberSaveable { mutableStateOf(false) }
+    var notesDraft by rememberSaveable { mutableStateOf("") }
     val loaded = item
 
     if (!ready) {
@@ -202,6 +219,25 @@ fun BookScreen(
                     IconButton(onClick = { appendSheetOpen = true }, enabled = !appending) {
                         Icon(Icons.Outlined.LibraryAdd, contentDescription = stringResource(R.string.append_files))
                     }
+                    IconButton(onClick = {
+                        scope.launch {
+                            val md = vm.exportBookSummaryMarkdown() ?: return@launch
+                            val safeName = book.book.title
+                                .replace(Regex("[^\\p{L}\\p{N}._-]+"), "-")
+                                .trim('-')
+                                .take(40)
+                                .ifBlank { "book" }
+                            context.shareText(
+                                text = md,
+                                fileName = "$safeName-notes.md",
+                                mimeType = "text/plain",
+                                subject = book.book.title,
+                                chooserTitle = shareTitle,
+                            )
+                        }
+                    }) {
+                        Icon(Icons.Outlined.Share, contentDescription = shareTitle)
+                    }
                     IconButton(onClick = { renameOpen = true }) {
                         Icon(Icons.Outlined.Edit, contentDescription = stringResource(R.string.rename_dialog_title))
                     }
@@ -227,7 +263,15 @@ fun BookScreen(
         ) {
             item {
                 Row(verticalAlignment = Alignment.Top) {
-                    BookCover(book.book.coverPath, Modifier.size(132.dp), corner = 12.dp)
+                    BookCover(
+                        book.book.coverPath,
+                        Modifier
+                            .size(132.dp)
+                            .clip(MaterialTheme.shapes.medium)
+                            .semantics { contentDescription = changeCoverDesc }
+                            .clickable { runCatching { pickCoverImage.launch("image/*") } },
+                        corner = 12.dp,
+                    )
                     Spacer(Modifier.width(Spacing.l))
                     Column(Modifier.weight(1f)) {
                         // Назва книги — без maxLines: див. BookTitleDisplayTest.
@@ -417,17 +461,37 @@ fun BookScreen(
                     )
                 }
                 Spacer(Modifier.height(Spacing.xl))
-                Text(stringResource(R.string.chapters), style = MaterialTheme.typography.titleLarge)
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        stringResource(R.string.chapters),
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (book.chapters.size > 1) {
+                        TextButton(onClick = { confirmNumbering = true }) {
+                            Text(stringResource(R.string.chapters_number_action))
+                        }
+                    }
+                }
+                Text(
+                    stringResource(R.string.chapter_rename_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
             val chapters = book.chapters.sortedBy { it.index }
             itemsIndexed(chapters, key = { _, ch -> ch.id }) { index, ch ->
                 val current = index == book.book.currentChapterIndex
+                val renameLabel = stringResource(R.string.chapter_rename_title)
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .clickable {
-                            vm.play(index, onStarted = onOpenPlayer)
-                        }
+                        // Довге натискання — перейменувати; підпис дії озвучує TalkBack.
+                        .combinedClickable(
+                            onLongClickLabel = renameLabel,
+                            onLongClick = { renamingChapterId = ch.id },
+                            onClick = { vm.play(index, onStarted = onOpenPlayer) },
+                        )
                         .padding(vertical = Spacing.s),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -477,6 +541,65 @@ fun BookScreen(
         }
     }
 
+    renamingChapterId?.let { chapterId ->
+        val chapter = book.chapters.firstOrNull { it.id == chapterId }
+        if (chapter == null) {
+            renamingChapterId = null
+        } else {
+            var chapterTitle by rememberSaveable(chapterId) { mutableStateOf(chapter.title) }
+            AlertDialog(
+                onDismissRequest = { renamingChapterId = null },
+                title = { Text(stringResource(R.string.chapter_rename_title)) },
+                text = {
+                    OutlinedTextField(
+                        chapterTitle,
+                        { chapterTitle = it },
+                        label = { Text(stringResource(R.string.title_label)) },
+                        singleLine = true,
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        enabled = chapterTitle.isNotBlank(),
+                        onClick = {
+                            vm.renameChapter(chapterId, chapterTitle)
+                            renamingChapterId = null
+                        },
+                    ) { Text(stringResource(R.string.save)) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { renamingChapterId = null }) { Text(stringResource(R.string.cancel)) }
+                },
+            )
+        }
+    }
+
+    if (confirmNumbering) {
+        val count = book.chapters.size
+        AlertDialog(
+            onDismissRequest = { confirmNumbering = false },
+            title = { Text(stringResource(R.string.chapters_number_confirm_title)) },
+            text = {
+                Text(
+                    pluralStringResource(
+                        R.plurals.chapters_number_confirm_msg,
+                        count,
+                        count,
+                        stringResource(R.string.chapter_number, 1),
+                        stringResource(R.string.chapter_number, 2),
+                    ),
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmNumbering = false
+                    vm.numberChapters()
+                }) { Text(stringResource(R.string.chapters_number_action)) }
+            },
+            dismissButton = { TextButton(onClick = { confirmNumbering = false }) { Text(stringResource(R.string.cancel)) } },
+        )
+    }
+
     if (confirmDelete) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
@@ -493,10 +616,10 @@ fun BookScreen(
     }
 
     if (renameOpen) {
-        var title by remember(book.book.id) { mutableStateOf(book.book.title) }
-        var author by remember(book.book.id) { mutableStateOf(book.book.author) }
-        var series by remember(book.book.id) { mutableStateOf(book.book.series.orEmpty()) }
-        var seriesOrder by remember(book.book.id) {
+        var title by rememberSaveable(book.book.id) { mutableStateOf(book.book.title) }
+        var author by rememberSaveable(book.book.id) { mutableStateOf(book.book.author) }
+        var series by rememberSaveable(book.book.id) { mutableStateOf(book.book.series.orEmpty()) }
+        var seriesOrder by rememberSaveable(book.book.id) {
             mutableStateOf(
                 book.book.seriesOrder?.let {
                     if (it % 1f == 0f) it.toInt().toString() else it.toString()

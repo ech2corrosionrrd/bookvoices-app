@@ -1,0 +1,40 @@
+BookVoices is an audiobook player for your own collection. Add a folder of mp3, m4b, ogg or flac files and pick up exactly where you left off. No account, no ads, no subscription; your files stay on your phone.
+
+LISTENING
+• mp3, m4b, ogg, flac and opus; chapters from m4b, ID3 and CUE, and nested CD1/CD2 folders
+• Rename chapters or number them after confirming
+• Resume where you stopped, smart rewind after a pause
+• Playback speed, skip controls, optional headset button gestures
+• Sleep timer: minutes, end of chapter or book, shake to extend; a night schedule starts it for you
+• One-tap bookmark from the notification shade; notes on bookmarks and search across them
+• Resume after your headphones reconnect (optional)
+• Up Next queue for back-to-back books
+• Background playback, home-screen widget, lock-screen and notification controls
+• "Continue" shortcut on the app icon and a Quick Settings tile to play or pause
+
+LIBRARY
+• Shelf with covers, search, tags, series and pinned favorites
+• Grid or compact list view, comfortable even with a hundred books
+• Import a folder, single files or a ZIP archive (open it straight from your file manager); set your own cover
+• Parses "Author - Title" from folder names, with an author screen
+• Fast multi-word search that ignores case, diacritics and apostrophes
+• Automatically picks up new books from folders you choose
+• Flags books whose files went missing
+
+STATS AND DATA
+• Listening history with week, month and year charts
+• Progress backup to JSON or to your own WebDAV server; sync between phone and tablet without duplicate books
+• Daily automatic backup to a folder you choose, keeping the last 7
+• Listening streak, a daily goal and history export to CSV
+• Export your catalog, bookmarks and a per-book summary as Markdown
+
+COMFORT
+• Night, Paper and true-black OLED themes
+• Large-font and tablet friendly layouts
+• 7 interface languages: English, Українська, Polski, Deutsch, Español, Français, Português (Brasil)
+
+Privacy. No analytics, no trackers, no sign-up. The app works offline; the network is used only if you turn on WebDAV backup yourself.
+
+In this build every Pro feature is unlocked free of charge: silence and pause skipping, hardware Volume Boost (+6 dB), voice equalizer with pitch correction, auto-bookmark when headphones disconnect, per-book character lists and A–B repeat. On Google Play they are a one-time purchase; if you like the app, that is a way to support it.
+
+BookVoices doesn't sell or stream books: it plays the ones you already own.

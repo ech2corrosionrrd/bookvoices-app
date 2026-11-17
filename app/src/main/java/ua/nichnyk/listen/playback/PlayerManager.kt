@@ -6,7 +6,6 @@ import android.os.Bundle
 import android.os.SystemClock
 import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
-import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
@@ -44,6 +43,7 @@ import ua.nichnyk.listen.data.BookWithChapters
 import ua.nichnyk.listen.data.ChapterEntity
 import ua.nichnyk.listen.data.LibraryRepository
 import ua.nichnyk.listen.data.SmartRewindLogic
+import ua.nichnyk.listen.data.pickResumeBook
 import ua.nichnyk.listen.data.UserPrefs
 import ua.nichnyk.listen.data.UserSettings
 import ua.nichnyk.listen.data.VoicePreset
@@ -98,6 +98,7 @@ data class PlayerUiState(
     val jumpBackTarget: JumpBackTarget? = null,
     val voicePreset: VoicePreset = VoicePreset.OFF,
     val pitch: Float = 1.0f,
+    val abLoop: AbLoopState? = null,
 ) {
     val isSleepEndOfChapter: Boolean
         get() = sleepMode == SleepTimerMode.EndOfChapter
@@ -197,6 +198,10 @@ class PlayerManager(
     )
     private val connectMutex = Mutex()
     private val prepareMutex = Mutex()
+    private val queueSaveMutex = Mutex()
+
+    /** Остання черга, успішно записана в базу; доступ лише під [queueSaveMutex]. */
+    private var lastSavedQueueIds: List<String>? = null
     private var controller: MediaController? = null
     private val _state = MutableStateFlow(PlayerUiState())
     val state: StateFlow<PlayerUiState> = _state.asStateFlow()
@@ -217,6 +222,8 @@ class PlayerManager(
 
     /** У якому режимі був останній таймер — щоб струшування завело такий самий. */
     private var lastSleepMode: SleepTimerMode? = null
+    /** Монотонний час ручного скасування таймера сну — щоб нічний розклад не вмикав його знову тієї ж ночі. */
+    private var nightTimerDismissedAtElapsedMs: Long = 0L
     private var settings = UserSettings()
     private var loadedBookId: String? = null
     private var endOfChapterTargetIndex: Int? = null
@@ -298,6 +305,16 @@ class PlayerManager(
                 }
             }
             if (player.playbackState == Player.STATE_ENDED && !player.hasNextMediaItem()) {
+                val activeLoop = _state.value.abLoop
+                if (activeLoop != null && activeLoop.isComplete &&
+                    activeLoop.chapterIndex == player.currentMediaItemIndex
+                ) {
+                    player.seekTo(activeLoop.chapterIndex, activeLoop.startMs)
+                    // На паузі кінець файла теж дає STATE_ENDED. play() тут сам
+                    // вмикав звук, хоча слухач лише дотягнув слайдер.
+                    if (player.playWhenReady) player.play()
+                    return
+                }
                 // onEvents спрацьовує багато разів поспіль у стані ENDED — пишемо лише раз.
                 if (endedHandled) return
                 endedHandled = true
@@ -323,7 +340,8 @@ class PlayerManager(
                             // з черги книга лишалася б у ній на диску й повернулася
                             // після перезапуску процесу.
                             removeFromQueue(nextBook.book.id)
-                            play(nextBook)
+                            val freshBook = runCatching { repo.getBook(nextBook.book.id) }.getOrNull() ?: nextBook
+                            play(freshBook)
                         }
                     }
                 }
@@ -338,6 +356,11 @@ class PlayerManager(
             val currentBook = _state.value.book
             val chapterId = currentItem.mediaId
             if (currentBook == null || currentBook.chapters.none { it.id == chapterId }) {
+                // Auto, голос і шторка міняють чергу повз prepareLocked, тож петля
+                // попередньої книги інакше лишалась і на новій, якщо номер розділу збігся.
+                if (_state.value.abLoop != null) {
+                    _state.update { it.copy(abLoop = null) }
+                }
                 scope.launch {
                     val bookIdFromExtra = currentItem.mediaMetadata.extras?.getString("book_id")
                     val book = if (bookIdFromExtra != null) repo.getBook(bookIdFromExtra) else repo.getBookForChapter(chapterId)
@@ -407,6 +430,9 @@ class PlayerManager(
                 if (_state.value.volumeBoost != s.volumeBoost) {
                     _state.update { it.copy(volumeBoost = s.volumeBoost) }
                 }
+                if (!s.isPro && _state.value.abLoop != null) {
+                    _state.update { it.copy(abLoop = null) }
+                }
                 if (!s.shakeToExtendSleep) {
                     disarmSleepGrace()
                     shakeDetector.stop()
@@ -437,7 +463,26 @@ class PlayerManager(
                 .collect {
                     ua.nichnyk.listen.ui.widget.NowPlayingWidgetProvider
                         .updateAllWidgets(app, _state.value)
+                    ua.nichnyk.listen.ui.quick.QuickAccess.refreshTile(app)
                 }
+        }
+        scope.launch(Dispatchers.Default) {
+            // Ярлик «Продовжити …» — лише при зміні книги чи її назви: система
+            // обмежує частоту оновлень ярликів для фонового застосунку. Порожній
+            // стан не прибирає ярлик — на старті книга ще відновлюється з бази.
+            _state.map { s -> s.book?.book?.let { it.id to it.title } }
+                .distinctUntilChanged()
+                .collect { pair ->
+                    if (pair != null) {
+                        ua.nichnyk.listen.ui.quick.QuickAccess.publishResumeShortcut(app, pair.first, pair.second)
+                    }
+                }
+        }
+        scope.launch(Dispatchers.Default) {
+            // «Остання книга» забута (видалили, відновили бекап) — ярлик на неї не лишаємо.
+            prefs.lastBookId.distinctUntilChanged().collect { id ->
+                if (id == null) ua.nichnyk.listen.ui.quick.QuickAccess.removeResumeShortcut(app)
+            }
         }
     }
 
@@ -513,7 +558,8 @@ class PlayerManager(
                 if (c.isPlaying) {
                     c.pause()
                 } else {
-                    applySmartRewindOnResume()
+                    // Відкат після паузи робить сесійний плеєр у PlaybackService —
+                    // однаково для кнопки в застосунку, шторки, гарнітури й Auto.
                     c.play()
                 }
             }.onFailure { e ->
@@ -523,38 +569,66 @@ class PlayerManager(
         }
     }
 
-    fun pause() {
-        withLiveController { it.pause() }
+    /**
+     * Ярлик «Продовжити …»: та сама книга, що вже в плеєрі, — просто play;
+     * інша — завантажити з бази з її збереженого місця. Книги вже нема
+     * (видалили) — прибрати ярлик, щоб він не вів у нікуди.
+     */
+    fun resumeBook(bookId: String) {
+        scope.launch {
+            runCatching {
+                val c = requireController()
+                if (loadedBookId == bookId && c.mediaItemCount > 0) {
+                    if (!c.isPlaying) c.play()
+                    return@runCatching
+                }
+                val book = repo.getBook(bookId)
+                if (book == null) {
+                    ua.nichnyk.listen.ui.quick.QuickAccess.removeResumeShortcut(app)
+                    return@runCatching
+                }
+                play(book)
+            }.onFailure { e ->
+                if (e is CancellationException) throw e
+                _errors.trySend(errorMessage(e))
+            }
+        }
     }
 
     /**
-     * Відкат при поверненні до книги після паузи.
-     *
-     * Джерело часу — `lastPlayedAt` у базі, те саме, що й у [play]. Тікер пише
-     * його на кожному переході isPlaying → false (persist(force = true)), тож
-     * **звідки поставили на паузу — не має значення**: шторка, Android Auto,
-     * втрата аудіофокусу й кнопка в застосунку дають однаковий результат.
-     * Окреме поле в памʼяті цього не вміло — воно жило лише поки живий процес і
-     * заповнювалося тільки паузою через PlayerManager.
-     *
-     * **Чого цей метод поки не покриває.** Він висить на [playPause], тобто на
-     * кнопці в застосунку. Пуск зі шторки, з Auto чи з гарнітури йде прямо до
-     * сесійного плеєра й відкату не дістає: пауза на ніч і ранкове «play» з
-     * екрана блокування продовжать рівно з того місця, де зупинилися.
-     *
-     * Зробити це рівномірно означає перенести відкат у сам сесійний плеєр і
-     * тримати там мітку зупинки — а це стан, який легко подвоїти з відкатом у
-     * [play] на старті книги. Перед релізом такий обмін не вартий того; лишаємо
-     * як відому межу (див. ROADMAP, хвиля D).
+     * Глави книги, що зараз у плеєрі, перейменували: назви на екрані плеєра, у шторці й
+     * в Android Auto мають змінитися одразу, без перезапуску книги. Міняємо лише
+     * метадані елементів: адреса й межі ті самі, тож ExoPlayer не перепідготовлює їх і
+     * відтворення не переривається.
      */
-    private suspend fun applySmartRewindOnResume() {
-        if (!settings.smartRewind) return
-        val bookId = _state.value.book?.book?.id ?: return
-        // Саме з бази, а не зі знімка стану: у памʼяті лежить копія, зроблена в
-        // момент завантаження книги, і після годин відтворення вона застаріла.
-        val lastPlayedAt = runCatching { repo.getBook(bookId)?.book?.lastPlayedAt }.getOrNull() ?: return
-        val rewind = SmartRewindLogic.calculateRewindMs(System.currentTimeMillis() - lastPlayedAt)
-        if (rewind > 0L) seekBy(-rewind)
+    fun refreshChapterTitles(bookId: String) {
+        scope.launch {
+            runCatching {
+                if (loadedBookId != bookId) return@runCatching
+                val fresh = repo.getBook(bookId) ?: return@runCatching
+                val byId = fresh.chapters.associateBy { it.id }
+                _state.update { s ->
+                    val current = s.book ?: return@update s
+                    if (current.book.id != bookId) return@update s
+                    s.copy(book = current.copy(chapters = current.chapters.map { byId[it.id] ?: it }))
+                }
+                val c = liveController() ?: return@runCatching
+                for (i in 0 until c.mediaItemCount) {
+                    val item = c.getMediaItemAt(i)
+                    val title = byId[item.mediaId]?.title ?: continue
+                    if (item.mediaMetadata.subtitle?.toString() == title) continue
+                    val meta = item.mediaMetadata.buildUpon().setSubtitle(title).build()
+                    c.replaceMediaItem(i, item.buildUpon().setMediaMetadata(meta).build())
+                }
+            }.onFailure { e ->
+                if (e is CancellationException) throw e
+                AppLog.w("PlayerManager.refreshChapterTitles", e)
+            }
+        }
+    }
+
+    fun pause() {
+        withLiveController { it.pause() }
     }
 
     /**
@@ -588,7 +662,7 @@ class PlayerManager(
     }
 
     private fun stopAndForgetLocked() {
-        cancelSleep()
+        clearSleepInternal()
         playbackStarted = false
         endedHandled = true
         loadedBookId = null
@@ -644,6 +718,27 @@ class PlayerManager(
         }
     }
 
+    fun toggleAbLoop() {
+        if (!settings.isPro) return
+        val s = _state.value
+        if (s.book == null) return
+        val c = liveController()
+        val pos = (c?.currentPosition ?: s.positionMs).coerceAtLeast(0L)
+        val idx = (c?.currentMediaItemIndex?.takeIf { it >= 0 } ?: s.chapterIndex).coerceAtLeast(0)
+        val chapterDur = c?.duration?.takeIf { it > 0 } ?: s.durationMs
+        val transition = AbLoopLogic.nextOnToggle(s.abLoop, idx, pos, chapterDur)
+        _state.update { it.copy(abLoop = transition.state) }
+        if (transition.seekToMs != null) {
+            c?.seekTo(idx, transition.seekToMs)
+        }
+    }
+
+    fun clearAbLoop() {
+        if (_state.value.abLoop != null) {
+            _state.update { it.copy(abLoop = null) }
+        }
+    }
+
     fun dismissJumpBack() {
         _state.update { it.copy(jumpBackTarget = null) }
     }
@@ -658,6 +753,9 @@ class PlayerManager(
     }
 
     fun jumpToChapter(index: Int) {
+        if (_state.value.abLoop != null && _state.value.abLoop?.chapterIndex != index) {
+            _state.update { it.copy(abLoop = null) }
+        }
         val s = _state.value
         if (s.chapterIndex != index || s.positionMs > 10_000L) {
             recordJumpBack(s.chapterIndex, s.positionMs)
@@ -775,7 +873,8 @@ class PlayerManager(
      * не тоді, коли його ставили.
      */
     fun startSleep(minutes: Int) {
-        cancelSleep()
+        nightTimerDismissedAtElapsedMs = 0L
+        clearSleepInternal()
         var left = minutes * 60_000L
         lastSleepMode = SleepTimerMode.Minutes
         _state.update {
@@ -808,15 +907,28 @@ class PlayerManager(
     }
 
     fun startSleepUntilChapterEnd() {
-        cancelSleep()
+        nightTimerDismissedAtElapsedMs = 0L
+        clearSleepInternal()
         lastSleepMode = SleepTimerMode.EndOfChapter
         _state.update { it.copy(sleepMode = SleepTimerMode.EndOfChapter) }
         if (settings.shakeToExtendSleep) shakeDetector.start()
 
         sleepJob = scope.launch {
-            endOfChapterTargetIndex = (liveController() ?: return@launch).currentMediaItemIndex
+            val startCtrl = liveController()
+            if (startCtrl == null) {
+                // Без контролера таймер не запрацює: знімаємо режим сну, який виставили вище,
+                // інакше інтерфейс лишився б у «сні» без жодного відліку.
+                shakeDetector.stop()
+                _state.update { it.copy(sleepRemainingMs = null, sleepMode = null, sleepPresetMinutes = null) }
+                return@launch
+            }
+            endOfChapterTargetIndex = startCtrl.currentMediaItemIndex
             while (isActive) {
-                val ctrl = liveController() ?: break
+                val ctrl = liveController()
+                if (ctrl == null) {
+                    dropSleepState()
+                    return@launch
+                }
                 val targetIdx = endOfChapterTargetIndex ?: break
                 val nowIdx = ctrl.currentMediaItemIndex
                 val dur = ctrl.duration.takeIf { it > 0 } ?: _state.value.durationMs
@@ -851,15 +963,22 @@ class PlayerManager(
     }
 
     fun startSleepUntilBookEnd() {
-        cancelSleep()
+        nightTimerDismissedAtElapsedMs = 0L
+        clearSleepInternal()
         lastSleepMode = SleepTimerMode.EndOfBook
         _state.update { it.copy(sleepMode = SleepTimerMode.EndOfBook) }
         if (settings.shakeToExtendSleep) shakeDetector.start()
 
         sleepJob = scope.launch {
             while (isActive) {
-                val ctrl = liveController() ?: break
-                val book = _state.value.book ?: break
+                // Без контролера чи книги таймер не відлічить: знімаємо режим сну, інакше
+                // інтерфейс лишився б у «сні» без жодного відліку (як і в кінці глави).
+                val ctrl = liveController()
+                val book = _state.value.book
+                if (ctrl == null || book == null) {
+                    dropSleepState()
+                    return@launch
+                }
                 val chapters = book.chapters
                 val currentIdx = ctrl.currentMediaItemIndex
                 val currentPos = ctrl.currentPosition
@@ -885,7 +1004,26 @@ class PlayerManager(
         }
     }
 
+    /** Скидає видимий стан сну, коли таймер не може працювати (контролер втрачено). */
+    private fun dropSleepState() {
+        shakeDetector.stop()
+        endOfChapterTargetIndex = null
+        _state.update { it.copy(sleepRemainingMs = null, sleepMode = null, sleepPresetMinutes = null) }
+    }
+
     fun cancelSleep() {
+        if (_state.value.sleepMode != null || sleepJob != null) {
+            nightTimerDismissedAtElapsedMs = android.os.SystemClock.elapsedRealtime().coerceAtLeast(1L)
+        }
+        clearSleepInternal()
+    }
+
+    /** Для тестів: PlayerManager спільний між ними, і ручне скасування в одному не має глушити нічний таймер в іншому. */
+    internal fun resetNightTimerDismissal() {
+        nightTimerDismissedAtElapsedMs = 0L
+    }
+
+    private fun clearSleepInternal() {
         sleepJob?.cancel()
         sleepJob = null
         disarmSleepGrace()
@@ -909,6 +1047,19 @@ class PlayerManager(
         updateQueue { queue -> queue.filterNot { it.book.id == bookId } }
     }
 
+    fun moveQueueItem(fromIndex: Int, toIndex: Int) {
+        updateQueue { queue ->
+            if (fromIndex !in queue.indices || toIndex !in queue.indices || fromIndex == toIndex) {
+                queue
+            } else {
+                queue.toMutableList().apply {
+                    val item = removeAt(fromIndex)
+                    add(toIndex, item)
+                }
+            }
+        }
+    }
+
     fun clearQueue() {
         updateQueue { emptyList() }
     }
@@ -925,8 +1076,18 @@ class PlayerManager(
         val after = _state.value.queue.map { it.book.id }
         if (before == after) return
         scope.launch {
-            runCatching { repo.saveQueue(after) }
-                .onFailure { AppLog.w("PlayerManager: черга не збереглася", it) }
+            // Збереження серіалізоване, а пишемо актуальну чергу на момент запису, а не
+            // знімок виклику: раніше окремі корутини могли завершитися в іншому порядку,
+            // і в базі лишалася стара черга.
+            queueSaveMutex.withLock {
+                val latest = _state.value.queue.map { it.book.id }
+                // Склеювання: при швидких перетягуваннях у мʼютекса стоїть десяток
+                // корутин, і всі, крім першої, бачать уже записаний актуальний стан.
+                if (latest == lastSavedQueueIds) return@withLock
+                runCatching { repo.saveQueue(latest) }
+                    .onSuccess { lastSavedQueueIds = latest }
+                    .onFailure { AppLog.w("PlayerManager: черга не збереглася", it) }
+            }
         }
     }
 
@@ -967,12 +1128,20 @@ class PlayerManager(
         val s = settings
         val now = java.util.Calendar.getInstance()
         val nowMinute = now.get(java.util.Calendar.HOUR_OF_DAY) * 60 + now.get(java.util.Calendar.MINUTE)
+        if (!isInNightWindow(nowMinute, s.nightTimerStartMinute, s.nightTimerEndMinute)) {
+            nightTimerDismissedAtElapsedMs = 0L
+            return
+        }
+        val dismissedAgoMs = nightTimerDismissedAtElapsedMs
+            .takeIf { it > 0L }
+            ?.let { (android.os.SystemClock.elapsedRealtime() - it).coerceAtLeast(0L) }
         if (shouldStartNightTimer(
                 enabled = s.nightTimerEnabled,
                 timerActive = _state.value.sleepMode != null,
                 nowMinute = nowMinute,
                 startMinute = s.nightTimerStartMinute,
                 endMinute = s.nightTimerEndMinute,
+                dismissedAgoMs = dismissedAgoMs,
             )
         ) {
             startSleep(s.nightTimerMinutes)
@@ -1135,7 +1304,15 @@ class PlayerManager(
                 controller = ctrl
                 ctrl.addListener(listener)
                 sendSkipSilence(settings.skipSilence)
-                applyPlaybackParameters(_state.value.speed, settings.pitch)
+                // Швидкість беремо з самої сесії, а не зі стану UI: на першому
+                // підключенні (процес підняла система, сесія вже грає на 1.25)
+                // у стані ще стоїть типова 1.0, і ми б скинули швидкість сесії.
+                val sessionSpeed = if (ctrl.mediaItemCount > 0) {
+                    ctrl.playbackParameters.speed
+                } else {
+                    _state.value.speed
+                }
+                applyPlaybackParameters(sessionSpeed, settings.pitch)
                 _state.update {
                     it.copy(
                         connected = true,
@@ -1188,13 +1365,30 @@ class PlayerManager(
     private suspend fun restoreLastBookIfNeeded() {
         if (loadedBookId != null) return
         if (liveController()?.isPlaying == true) return
-        val id = prefs.lastBookId.first() ?: return
-        val book = repo.getBook(id)
+        val id = prefs.lastBookId.first()
+        // Те саме правило, що в PlaybackService.onPlaybackResumption (pickResumeBook):
+        // книга зі збереженого id, якщо вона є й не дослухана; інакше — найсвіжіша
+        // недослухана. Швидкий шлях без читання всієї полиці: id існує й не дослухана.
+        val saved = id?.let { repo.getBook(it) }
+        val book = if (saved != null && !saved.book.completed) {
+            saved
+        } else {
+            val shelf = runCatching { repo.observeBooks().first() }.getOrDefault(emptyList())
+            // Ніколи не слухану книгу без збереженого id самі в плеєр не ставимо.
+            pickResumeBook(shelf, id)?.takeIf { it.book.lastPlayedAt != null || it.book.id == id }
+        }
         if (book == null) {
-            prefs.setLastBookId(null)
+            if (id != null) prefs.setLastBookId(null)
             return
         }
-        runCatching { prepare(book, autoPlay = false) }
+        // Відкат після паузи застосовуємо одразу до відновленої позиції: сесійний
+        // плеєр про цю паузу (до запуску процесу) не знає.
+        val resumePos = if (settings.smartRewind && !book.book.completed) {
+            SmartRewindLogic.applyToPosition(book.book.lastPlayedAt, book.book.positionMs)
+        } else {
+            book.book.positionMs
+        }
+        runCatching { prepare(book, positionMs = resumePos, autoPlay = false, onlyIfIdle = true) }
             .onFailure { e ->
                 if (e is CancellationException) throw e
                 prefs.setLastBookId(null)
@@ -1207,9 +1401,24 @@ class PlayerManager(
      * приходять із viewModelScope; один withContext(Dispatchers.IO) у новому місці
      * зламав би плеєр у рантаймі з IllegalStateException.
      */
-    private suspend fun prepare(book: BookWithChapters, chapterIndex: Int = book.book.currentChapterIndex, positionMs: Long = book.book.positionMs, autoPlay: Boolean) {
+    /**
+     * @param onlyIfIdle для тихого відновлення на старті: перевірка «плеєр порожній»
+     * повторюється вже під замком. Без цього холодний старт із ярлика, віджета чи
+     * плитки програвав гонку: ті ставили книгу з автозапуском, а відновлення,
+     * яке перевірило порожнечу раніше, ставило її вдруге — на паузі.
+     */
+    private suspend fun prepare(
+        book: BookWithChapters,
+        chapterIndex: Int = book.book.currentChapterIndex,
+        positionMs: Long = book.book.positionMs,
+        autoPlay: Boolean,
+        onlyIfIdle: Boolean = false,
+    ) {
         prepareMutex.withLock {
-            withContext(Dispatchers.Main.immediate) { prepareLocked(book, chapterIndex, positionMs, autoPlay) }
+            withContext(Dispatchers.Main.immediate) {
+                if (onlyIfIdle && (loadedBookId != null || liveController()?.isPlaying == true)) return@withContext
+                prepareLocked(book, chapterIndex, positionMs, autoPlay)
+            }
         }
     }
 
@@ -1218,11 +1427,13 @@ class PlayerManager(
             val chapters = book.chapters.sortedBy { it.index }
             if (chapters.isEmpty()) throw PlaybackMessageException(app.forAppLocale().getString(R.string.play_failed))
 
-            val uriOk = chapters.map { it.uri }.distinct().associateWith { repo.isAudioAccessible(it) }
+            // Паралельна перевірка з обмеженням потоків: послідовний обхід сотень файлів
+            // на SD чи хмарному провайдері давав секунди затримки перед стартом.
+            val inaccessible = repo.inaccessibleUris(chapters.map { it.uri })
             val (index, startPos) = resolvePlayableStart(
                 requestedIndex = chapterIndex,
                 requestedPositionMs = positionMs,
-                playable = chapters.map { uriOk[it.uri] == true },
+                playable = chapters.map { it.uri !in inaccessible },
             ) ?: throw PlaybackMessageException(
                 app.forAppLocale().getString(R.string.file_unavailable_named, chapters.first().title),
             )
@@ -1232,15 +1443,12 @@ class PlayerManager(
                     .setMediaId(ch.id)
                     .setUri(ch.uri.toUri())
                     .setMediaMetadata(
-                        MediaMetadata.Builder()
-                            .setTitle(book.book.title)
-                            .setArtist(book.book.author)
-                            .setSubtitle(ch.title)
-                            .setAlbumTitle(book.book.title)
-                            .setArtworkUri(CoverUris.artwork(app, book.book.coverPath))
-                            .setIsPlayable(true)
-                            .setMediaType(MediaMetadata.MEDIA_TYPE_AUDIO_BOOK_CHAPTER)
-                            .build()
+                        queueChapterMetadata(
+                            bookTitle = book.book.title,
+                            author = book.book.author,
+                            chapterTitle = ch.title,
+                            artworkUri = CoverUris.artwork(app, book.book.coverPath),
+                        )
                     )
                 if (ch.startMs > 0L || ch.endMs > ch.startMs) {
                     val clip = MediaItem.ClippingConfiguration.Builder()
@@ -1278,6 +1486,7 @@ class PlayerManager(
                     skipSilence = settings.skipSilence,
                     voicePreset = settings.voicePreset,
                     monoAudio = settings.monoAudio,
+                    abLoop = null,
                 )
             }
             if (autoPlay) c.play() else c.pause()
@@ -1345,7 +1554,13 @@ class PlayerManager(
                 if (!playing) {
                     flushListening()
                     persist(force = true)
+                    if (playbackStarted && settings.webDavAutoSync && settings.webDavServer.isNotBlank()) {
+                        ua.nichnyk.listen.data.WebDavSyncScheduler.enqueueAfterListening(app)
+                    }
                     return@collectLatest
+                }
+                if (settings.webDavAutoSync) {
+                    ua.nichnyk.listen.data.WebDavSyncScheduler.cancelAfterListening(app)
                 }
                 maybeStartNightTimer()
                 var n = 0
@@ -1353,7 +1568,7 @@ class PlayerManager(
                 while (isActive) {
                     val uiVisible = ProcessLifecycleOwner.get().lifecycle.currentState
                         .isAtLeast(Lifecycle.State.STARTED)
-                    val tickMs = if (uiVisible) TICK_FOREGROUND_MS else TICK_BACKGROUND_MS
+                    val tickMs = if (uiVisible || _state.value.abLoop?.isComplete == true) TICK_FOREGROUND_MS else TICK_BACKGROUND_MS
 
                     val now = SystemClock.elapsedRealtime()
                     val elapsed = now - lastTickMs
@@ -1397,6 +1612,12 @@ class PlayerManager(
     }
 
 
+    /** Сон до кінця розділу чи книги має дійти до справжнього кінця, а не крутити петлю A–B. */
+    private fun sleepPreemptsAbLoop(): Boolean {
+        val mode = _state.value.sleepMode
+        return mode == SleepTimerMode.EndOfChapter || mode == SleepTimerMode.EndOfBook
+    }
+
     private fun publish(player: Player) {
         if (player.isPlaying) {
             playbackStarted = true
@@ -1409,13 +1630,36 @@ class PlayerManager(
         }
         val book = _state.value.book
         val chapters = book?.chapters.orEmpty()
-        val idx = player.currentMediaItemIndex.coerceAtLeast(0)
+        var idx = player.currentMediaItemIndex.coerceAtLeast(0)
+        var pos = player.currentPosition.coerceAtLeast(0L)
+        var loopBack: Pair<Int, Long>? = null
+        val loop = _state.value.abLoop
+        // Сон «до кінця розділу / книги» інакше ніколи не настає: петля повертає
+        // в A раніше, ніж позиція доходить до кінця.
+        if (sleepPreemptsAbLoop() && AbLoopLogic.shouldLoopBack(loop, idx, pos) != null) {
+            _state.update { it.copy(abLoop = null) }
+        } else if (player.isPlaying) {
+            loopBack = AbLoopLogic.shouldLoopBack(loop, idx, pos)
+            if (loopBack != null) {
+                player.seekTo(loopBack.first, loopBack.second)
+                idx = loopBack.first
+                pos = loopBack.second
+            }
+        }
+        // Поза вікном автопереходу: на межі розділів наступний файл може мить буферизуватися
+        // (isPlaying = false), і петлю з B у кінці розділу скинуло б раніше за повернення.
+        // На паузі вікно не тримаємо — «наступний розділ» має відпустити петлю.
+        val retainEndRollover = !sleepPreemptsAbLoop() &&
+            AbLoopLogic.holdsEndRollover(_state.value.abLoop, idx, pos, player.playWhenReady)
+        if (loopBack == null && !retainEndRollover && AbLoopLogic.isStale(_state.value.abLoop, idx)) {
+            _state.update { it.copy(abLoop = null) }
+        }
         val chapterDur = player.duration.takeIf { it > 0 } ?: chapters.getOrNull(idx)?.durationMs ?: 0L
         repairChapterDurationIfUnknown(book, chapters.getOrNull(idx), player.duration)
         _state.update {
             it.copy(
                 chapterIndex = idx,
-                positionMs = player.currentPosition.coerceAtLeast(0L),
+                positionMs = pos,
                 durationMs = chapterDur,
                 isPlaying = player.isPlaying,
                 isBuffering = player.playbackState == Player.STATE_BUFFERING,

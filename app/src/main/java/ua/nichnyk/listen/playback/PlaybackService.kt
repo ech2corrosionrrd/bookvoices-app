@@ -33,7 +33,10 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import ua.nichnyk.listen.AppLog
+import ua.nichnyk.listen.forAppLocale
 import ua.nichnyk.listen.data.withoutGone
+import ua.nichnyk.listen.data.pickResumeBook
+import ua.nichnyk.listen.data.SmartRewindLogic
 import ua.nichnyk.listen.data.ChapterEntity
 import ua.nichnyk.listen.data.progress
 import ua.nichnyk.listen.data.replayTarget
@@ -95,6 +98,17 @@ class PlaybackService : MediaLibraryService() {
     // «за замовчуванням» до того, як межа Freemium прочитана, було б неправильно.
     private var autoBookmarkBluetooth = false
     private var resumeOnReconnect = false
+    private var smartRewindEnabled = false
+
+    /**
+     * Коли (стінний годинник) користувач/система поставили відтворення на паузу.
+     * 0 — паузи ще не було або вона стосувалася вже іншого списку. Потрібне для
+     * розумного відкату на будь-якому шляху запуску (шторка, гарнітура, Auto), а
+     * не лише з кнопки в застосунку; після перезапуску процесу відкат робить
+     * відновлення з бази ([fromStoredPosition], PlayerManager).
+     */
+    @Volatile
+    private var pausedAtWallMs = 0L
 
     /**
      * Коли відтворення обірвав розрив звуку (elapsedRealtime) — для [ReconnectResume].
@@ -127,10 +141,27 @@ class PlaybackService : MediaLibraryService() {
             else pausedByDisconnectAtMs = null
         }
 
+        // Ручна перемотка під час паузи: відкат від нового місця був би зайвим.
+        override fun onPositionDiscontinuity(
+            oldPosition: androidx.media3.common.Player.PositionInfo,
+            newPosition: androidx.media3.common.Player.PositionInfo,
+            reason: Int,
+        ) {
+            if (SmartRewindLogic.resetsPauseOnDiscontinuity(reason)) pausedAtWallMs = 0L
+        }
+
+        // Зміна елемента (інша глава, інша книга) теж означає нове місце, а не продовження.
+        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            pausedAtWallMs = 0L
+        }
+
         override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
             if (!playWhenReady) {
                 lastStopByUser =
                     reason == androidx.media3.common.Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST
+                pausedAtWallMs = System.currentTimeMillis()
+            } else {
+                pausedAtWallMs = 0L
             }
         }
     }
@@ -187,9 +218,9 @@ class PlaybackService : MediaLibraryService() {
             val timeStr = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
                 .format(java.util.Date())
             val noteStr = if (hasBluetoothOutput()) {
-                getString(R.string.bookmark_bluetooth_disconnected, timeStr)
+                str(R.string.bookmark_bluetooth_disconnected, timeStr)
             } else {
-                getString(R.string.bookmark_headset_disconnected, timeStr)
+                str(R.string.bookmark_headset_disconnected, timeStr)
             }
             addBookmarkAtCurrentPosition(noteStr)
         }
@@ -224,6 +255,7 @@ class PlaybackService : MediaLibraryService() {
 
     override fun onCreate() {
         super.onCreate()
+        lastConfigLocales = resources.configuration.locales.toLanguageTags()
         runCatching {
             val filter = android.content.IntentFilter(
                 android.media.AudioManager.ACTION_AUDIO_BECOMING_NOISY,
@@ -242,6 +274,9 @@ class PlaybackService : MediaLibraryService() {
             AppLog.w("PlaybackService: не зареєстрували приймач розриву гарнітури", it)
         }
         val renderersFactory = object : androidx.media3.exoplayer.DefaultRenderersFactory(this) {
+            // media3 1.11: сеттер позначено застарілим, замінника з тією самою семантикою немає;
+            // прапорець приходить від DefaultRenderersFactory, тож лишаємо виклик як є.
+            @Suppress("DEPRECATION")
             override fun buildAudioSink(
                 context: android.content.Context,
                 enableFloatOutput: Boolean,
@@ -306,17 +341,27 @@ class PlaybackService : MediaLibraryService() {
                     }
                     autoBookmarkBluetooth = it.autoBookmarkBluetooth
                     resumeOnReconnect = it.resumeOnReconnect
+                    smartRewindEnabled = it.smartRewind
                     doubleTapAction = it.headsetDoubleTapAction
                     tripleTapAction = it.headsetTripleTapAction
+                    val languageChanged = uiLanguageKnown && uiLanguage != it.language
+                    uiLanguageKnown = true
+                    uiLanguage = it.language
                     // Без цього сесія не дізнається про зміну: вона тримає знімок
                     // стану плеєра й оновлює його лише за подією.
                     sessionPlayer?.refreshSeekIncrements()
                     updateSkipButtons()
+                    // Віджет, ярлик, плитка й дерево Auto не входять у знімок відтворення,
+                    // тож сама зміна мови їх не перемальовувала.
+                    if (languageChanged) refreshLocaleSurfaces()
                 }
             }
         }
 
         session = MediaLibrarySession.Builder(this, wrapped, object : MediaLibrarySession.Callback {
+            // AcceptedResultBuilder(MediaSession) застарілий у media3 1.11; сесія тут потрібна
+            // для DEFAULT_SESSION_AND_LIBRARY_COMMANDS, поведінку не змінюємо.
+            @Suppress("DEPRECATION")
             override fun onConnect(
                 session: MediaSession,
                 controller: MediaSession.ControllerInfo,
@@ -411,17 +456,13 @@ class PlaybackService : MediaLibraryService() {
                                 .setMediaId(ch.id)
                                 .setUri(ch.uri.toUri())
                                 .setMediaMetadata(
-                                    MediaMetadata.Builder()
-                                        .setTitle(ch.title)
-                                        .setSubtitle(bookForCh.book.title)
-                                        .setArtist(bookForCh.book.author)
-                                        .setAlbumTitle(bookForCh.book.title)
-                                        .setArtworkUri(CoverUris.artwork(applicationContext, bookForCh.book.coverPath))
-                                        .setIsPlayable(true)
-                                        .setIsBrowsable(false)
-                                        .setMediaType(MediaMetadata.MEDIA_TYPE_AUDIO_BOOK_CHAPTER)
-                                        .setExtras(Bundle().apply { putString("book_id", bookForCh.book.id) })
-                                        .build()
+                                    browseChapterMetadata(
+                                        bookTitle = bookForCh.book.title,
+                                        author = bookForCh.book.author,
+                                        chapterTitle = ch.title,
+                                        artworkUri = CoverUris.artwork(applicationContext, bookForCh.book.coverPath),
+                                        extras = Bundle().apply { putString("book_id", bookForCh.book.id) },
+                                    )
                                 )
                                 .build()
                             LibraryResult.ofItem(item, null)
@@ -432,6 +473,9 @@ class PlaybackService : MediaLibraryService() {
                 }
             }
 
+            // Перевизначаємо застарілу версію без isForPlayback: нова не гарантує те саме
+            // «відновлення з кнопки гарнітури», тож поведінку не міняємо.
+            @Suppress("OVERRIDE_DEPRECATION")
             override fun onPlaybackResumption(
                 mediaSession: MediaSession,
                 controller: MediaSession.ControllerInfo,
@@ -440,15 +484,15 @@ class PlaybackService : MediaLibraryService() {
                     // Без втрачених книг: «продовжити» на книзі без файлів — це помилка
                     // відтворення просто з кнопки гарнітури.
                     val books = withoutGoneBooks(db.library().getAllBooks())
-                    // Дослухану книгу система відновлювати не має: «продовжити»
-                    // на ній означає останню секунду. Якщо незавершених немає
-                    // зовсім, беремо що є — fromStoredPosition поверне таку
-                    // книгу з початку.
-                    val started = books.filter { it.book.lastPlayedAt != null }
-                    val lastBook = started.filter { !it.book.completed }
-                        .maxByOrNull { it.book.lastPlayedAt ?: 0L }
-                        ?: started.maxByOrNull { it.book.lastPlayedAt ?: 0L }
-                        ?: books.firstOrNull()
+                    // Те саме правило, що й у PlayerManager при старті застосунку
+                    // (pickResumeBook): збережений lastBookId, якщо книга не
+                    // дослухана, інакше найсвіжіша недослухана. Дослухану книгу
+                    // «продовжити» не відновлює; якщо незавершених немає зовсім,
+                    // fromStoredPosition поверне таку книгу з початку.
+                    val preferredId = runCatching {
+                        (application as? ListenApp)?.container?.prefs?.lastBookId?.first()
+                    }.getOrNull()
+                    val lastBook = pickResumeBook(books, preferredId)
 
                     val request = lastBook?.let { fromStoredPosition(it) }
                         ?: throw IllegalStateException("No books available")
@@ -655,26 +699,82 @@ class PlaybackService : MediaLibraryService() {
      * лише попередній/наступний елемент. Підпис несе поточний крок із
      * налаштувань, тож оновлюється разом із ним.
      */
-    private var lastSkipButtons: Pair<Long, Long>? = null
+    private var lastSkipButtons: Triple<Long, Long, String>? = null
+
+    /** Мова з налаштувань: підписи кнопок шторки залежать і від неї, не лише від кроку. */
+    private var uiLanguage: String = ""
+
+    /** Перша емісія налаштувань — це не зміна мови, перемальовувати нічого. */
+    private var uiLanguageKnown = false
+
+    /** Локаль ресурсів сервісу: onConfigurationChanged приходить і на поворот, і на тему. */
+    private var lastConfigLocales: String? = null
+
+    /**
+     * Рядок мовою застосунку. Звичайний `getString` сервісу на API 26–32 віддає
+     * системну мову (AppCompat перевдягає лише активності), тож кнопки шторки,
+     * тости закладок і дерево Auto виходили не тією мовою. Див. [forAppLocale].
+     */
+    private fun str(@androidx.annotation.StringRes id: Int, vararg args: Any): String =
+        forAppLocale().getString(id, *args)
+
+    /**
+     * На API 33+ мову застосунку змінює системний `LocaleManager`, і ресурси сервісу
+     * отримують нову локаль лише з цією подією — вже після того, як налаштування з новою
+     * мовою дійшли до [updateSkipButtons]. Без перебудови тут кнопки шторки лишалися б
+     * попередньою мовою, доки сервіс живий.
+     */
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        // Поворот екрана, тема, масштаб шрифту — теж сюди. Перемальовувати шторку, віджет,
+        // ярлик і дерево Auto варто лише коли змінилась мова.
+        // Локаль ресурсів сервісу — те, якою мовою str() віддасть підписи.
+        val locales = resources.configuration.locales.toLanguageTags()
+        val previous = lastConfigLocales
+        lastConfigLocales = locales
+        if (previous == locales) return
+        lastSkipButtons = null
+        updateSkipButtons()
+        // Мова «як у системі»: налаштування не змінюються, подія приходить лише сюди.
+        refreshLocaleSurfaces()
+    }
+
+    /** Підписи віджета, ярлика, плитки й категорій Auto — мовою, яка щойно стала чинною. */
+    private fun refreshLocaleSurfaces() {
+        val app = application as? ListenApp ?: return
+        val state = app.container.player.state.value
+        scope.launch(Dispatchers.Default) {
+            ua.nichnyk.listen.ui.widget.NowPlayingWidgetProvider.updateAllWidgets(app, state)
+            ua.nichnyk.listen.ui.quick.QuickAccess.refreshTile(app)
+            val book = state.book?.book
+            if (book != null) {
+                ua.nichnyk.listen.ui.quick.QuickAccess.publishResumeShortcut(app, book.id, book.title)
+            }
+            val books = runCatching { db.library().observeBooks().first() }.getOrDefault(emptyList())
+            withContext(Dispatchers.Main) { notifyBrowseTreeChanged(books) }
+        }
+    }
 
     private fun updateSkipButtons() {
         val live = session ?: return
         // Налаштування приходять при зміні будь-якого перемикача; кнопки мають
-        // перебудовуватись лише коли справді змінився крок, інакше шторка зайве оновлюється.
-        val key = skipBackMs to skipForwardMs
+        // перебудовуватись лише коли справді змінився крок або мова, інакше шторка
+        // зайве оновлюється. Без мови в ключі кнопки лишалися старою мовою, доки
+        // сервіс живий (знайдено 17 листопада 2026 на емуляторі Android 14).
+        val key = Triple(skipBackMs, skipForwardMs, uiLanguage)
         if (lastSkipButtons == key) return
         lastSkipButtons = key
         val back = CommandButton.Builder(CommandButton.ICON_SKIP_BACK)
             .setSessionCommand(SessionCommand(ACTION_SKIP_BACK, Bundle.EMPTY))
-            .setDisplayName(getString(R.string.rewind_sec, (skipBackMs / 1000).toInt()))
+            .setDisplayName(str(R.string.rewind_sec, (skipBackMs / 1000).toInt()))
             .build()
         val forward = CommandButton.Builder(CommandButton.ICON_SKIP_FORWARD)
             .setSessionCommand(SessionCommand(ACTION_SKIP_FORWARD, Bundle.EMPTY))
-            .setDisplayName(getString(R.string.forward_sec, (skipForwardMs / 1000).toInt()))
+            .setDisplayName(str(R.string.forward_sec, (skipForwardMs / 1000).toInt()))
             .build()
         val bookmark = CommandButton.Builder(CommandButton.ICON_BOOKMARK_UNFILLED)
             .setSessionCommand(SessionCommand(ACTION_BOOKMARK, Bundle.EMPTY))
-            .setDisplayName(getString(R.string.bookmark))
+            .setDisplayName(str(R.string.bookmark))
             .build()
         live.setMediaButtonPreferences(ImmutableList.of(back, bookmark, forward))
     }
@@ -828,7 +928,7 @@ class PlaybackService : MediaLibraryService() {
                 withContext(Dispatchers.Main) {
                     android.widget.Toast.makeText(
                         this@PlaybackService,
-                        getString(R.string.bookmark_saved),
+                        str(R.string.bookmark_saved),
                         android.widget.Toast.LENGTH_SHORT,
                     ).show()
                 }
@@ -862,6 +962,34 @@ class PlaybackService : MediaLibraryService() {
 
         /** invalidateState() у SimpleBasePlayer захищений — відкриваємо його для сервісу. */
         fun refreshSeekIncrements() = invalidateState()
+
+        /**
+         * Розумний відкат для кожного шляху «play» з паузи: шторка, гарнітура, Auto, а
+         * також кнопка в застосунку (PlayerManager сам відкат більше не робить, щоб не
+         * було подвійного). Нова черга (setMediaItems) обнуляє мітку паузи: стару
+         * книгу не можна відкочувати за часом паузи іншої.
+         */
+        override fun handleSetPlayWhenReady(playWhenReady: Boolean): ListenableFuture<*> {
+            if (playWhenReady && !player.playWhenReady && smartRewindEnabled &&
+                player.mediaItemCount > 0 &&
+                player.playbackState != androidx.media3.common.Player.STATE_ENDED
+            ) {
+                val pos = player.currentPosition
+                val target = SmartRewindLogic.resumePosition(pausedAtWallMs, pos)
+                if (target < pos) player.seekTo(target)
+            }
+            pausedAtWallMs = 0L
+            return super.handleSetPlayWhenReady(playWhenReady)
+        }
+
+        override fun handleSetMediaItems(
+            mediaItems: List<MediaItem>,
+            startIndex: Int,
+            startPositionMs: Long,
+        ): ListenableFuture<*> {
+            pausedAtWallMs = 0L
+            return super.handleSetMediaItems(mediaItems, startIndex, startPositionMs)
+        }
     }
 
     // --- дерево для Android Auto -------------------------------------------
@@ -876,7 +1004,7 @@ class PlaybackService : MediaLibraryService() {
     private fun <T> List<T>.page(page: Int, pageSize: Int): List<T> = pageOf(page, pageSize)
 
     private fun rootItem(): MediaItem =
-        browsableItem(ROOT_ID, getString(R.string.app_name), listStyle())
+        browsableItem(ROOT_ID, str(R.string.app_name), listStyle())
 
     /**
      * Як Auto малює **вміст** цього вузла: списком чи сіткою.
@@ -945,9 +1073,9 @@ class PlaybackService : MediaLibraryService() {
     private fun emptyItemFor(parentId: String): MediaItem = emptyItem(
         EMPTY_PREFIX + parentId,
         when (parentId) {
-            CONTINUE_ID -> getString(R.string.auto_nothing_started)
-            AUTHORS_ID -> getString(R.string.auto_no_authors)
-            else -> getString(R.string.auto_empty_library)
+            CONTINUE_ID -> str(R.string.auto_nothing_started)
+            AUTHORS_ID -> str(R.string.auto_no_authors)
+            else -> str(R.string.auto_empty_library)
         },
     )
 
@@ -981,6 +1109,14 @@ class PlaybackService : MediaLibraryService() {
      */
     private fun bookItem(book: ua.nichnyk.listen.data.BookWithChapters): MediaItem {
         val (status, progress) = completionOf(book)
+        val percent = (progress * 100).toInt().coerceIn(0, 100)
+        // Android Auto 17.6 у списковому режимі кореневих вкладок не малює смужку
+        // EXTRAS_KEY_COMPLETION_PERCENTAGE, тому для початих книг дублюємо відсоток у підзаголовок.
+        val subtitle = when {
+            status == MediaConstants.EXTRAS_VALUE_COMPLETION_STATUS_PARTIALLY_PLAYED && percent > 0 ->
+                if (book.book.author.isNotBlank()) "${book.book.author} · $percent%" else "$percent%"
+            else -> book.book.author
+        }
         val extras = Bundle().apply {
             putInt(MediaConstants.EXTRAS_KEY_COMPLETION_STATUS, status)
             // Дробове, 0..1. Auto читає його лише при PARTIALLY_PLAYED, але
@@ -994,7 +1130,9 @@ class PlaybackService : MediaLibraryService() {
             .setMediaMetadata(
                 MediaMetadata.Builder()
                     .setTitle(book.book.title)
+                    .setDisplayTitle(book.book.title)
                     .setArtist(book.book.author)
+                    .setSubtitle(subtitle)
                     .setIsPlayable(true)
                     .setIsBrowsable(true)
                     .setArtworkUri(CoverUris.artwork(applicationContext, book.book.coverPath))
@@ -1008,11 +1146,11 @@ class PlaybackService : MediaLibraryService() {
     /** Опис вузла-категорії; null — це не категорія. */
     private fun categoryItem(mediaId: String): MediaItem? = when {
         mediaId == CONTINUE_ID ->
-            browsableItem(mediaId, getString(R.string.auto_continue), bookGridStyle())
+            browsableItem(mediaId, str(R.string.auto_continue), bookGridStyle())
         mediaId == ALL_BOOKS_ID ->
-            browsableItem(mediaId, getString(R.string.auto_all_books), bookGridStyle())
+            browsableItem(mediaId, str(R.string.auto_all_books), bookGridStyle())
         mediaId == AUTHORS_ID ->
-            browsableItem(mediaId, getString(R.string.auto_authors), listStyle())
+            browsableItem(mediaId, str(R.string.auto_authors), listStyle())
         mediaId.startsWith(AUTHOR_PREFIX) ->
             browsableItem(mediaId, mediaId.removePrefix(AUTHOR_PREFIX), bookGridStyle())
         else -> null
@@ -1064,9 +1202,9 @@ class PlaybackService : MediaLibraryService() {
                 listOf(emptyItemFor(ROOT_ID))
 
             parentId == ROOT_ID -> listOf(
-                browsableItem(CONTINUE_ID, getString(R.string.auto_continue), bookGridStyle()),
-                browsableItem(ALL_BOOKS_ID, getString(R.string.auto_all_books), bookGridStyle()),
-                browsableItem(AUTHORS_ID, getString(R.string.auto_authors), listStyle()),
+                browsableItem(CONTINUE_ID, str(R.string.auto_continue), bookGridStyle()),
+                browsableItem(ALL_BOOKS_ID, str(R.string.auto_all_books), bookGridStyle()),
+                browsableItem(AUTHORS_ID, str(R.string.auto_authors), listStyle()),
             )
 
             parentId == CONTINUE_ID -> library
@@ -1140,17 +1278,13 @@ class PlaybackService : MediaLibraryService() {
                 .setMediaId(ch.id)
                 .setUri(ch.uri.toUri())
                 .setMediaMetadata(
-                    MediaMetadata.Builder()
-                        .setTitle(ch.title)
-                        .setSubtitle(book.book.title)
-                        .setArtist(book.book.author)
-                        .setAlbumTitle(book.book.title)
-                        .setArtworkUri(CoverUris.artwork(applicationContext, book.book.coverPath))
-                        .setIsPlayable(true)
-                        .setIsBrowsable(false)
-                        .setMediaType(MediaMetadata.MEDIA_TYPE_AUDIO_BOOK_CHAPTER)
-                        .setExtras(extras)
-                        .build(),
+                    browseChapterMetadata(
+                        bookTitle = book.book.title,
+                        author = book.book.author,
+                        chapterTitle = ch.title,
+                        artworkUri = CoverUris.artwork(applicationContext, book.book.coverPath),
+                        extras = extras,
+                    ),
                 )
                 .withChapterClipping(ch)
                 .build()
@@ -1165,16 +1299,13 @@ class PlaybackService : MediaLibraryService() {
                 .setMediaId(ch.id)
                 .setUri(ch.uri.toUri())
                 .setMediaMetadata(
-                    MediaMetadata.Builder()
-                        .setTitle(book.book.title)
-                        .setArtist(book.book.author)
-                        .setSubtitle(ch.title)
-                        .setAlbumTitle(book.book.title)
-                        .setArtworkUri(CoverUris.artwork(applicationContext, book.book.coverPath))
-                        .setIsPlayable(true)
-                        .setMediaType(MediaMetadata.MEDIA_TYPE_AUDIO_BOOK_CHAPTER)
-                        .setExtras(extras)
-                        .build(),
+                    queueChapterMetadata(
+                        bookTitle = book.book.title,
+                        author = book.book.author,
+                        chapterTitle = ch.title,
+                        artworkUri = CoverUris.artwork(applicationContext, book.book.coverPath),
+                        extras = extras,
+                    ),
                 )
                 .withChapterClipping(ch)
                 .build()
@@ -1295,10 +1426,17 @@ class PlaybackService : MediaLibraryService() {
             savedChapter = book.book.currentChapterIndex,
             savedPositionMs = book.book.positionMs,
         )
+        // Розумний відкат: збережене місце — це там, де зупинилися, а не де слухач
+        // «увійде» в текст. Дослухану книгу (старт з початку) не чіпаємо.
+        val startPosition = if (smartRewindEnabled && !book.book.completed) {
+            SmartRewindLogic.applyToPosition(book.book.lastPlayedAt, position)
+        } else {
+            position
+        }
         return PlaybackRequest(
             items = items,
             startIndex = chapter.coerceIn(0, items.size - 1),
-            startPositionMs = position.coerceAtLeast(0L),
+            startPositionMs = startPosition.coerceAtLeast(0L),
             bookSpeed = speedOf(book),
         )
     }
@@ -1362,7 +1500,46 @@ class PlaybackService : MediaLibraryService() {
         loudnessEnhancer = null
     }
 
+    /**
+     * Остання позиція перед знищенням сервісу (best-effort).
+     *
+     * Тікер PlayerManager пише позицію раз на кілька секунд, а після відʼєднання
+     * контролера (див. onDisconnected) пише знімок стану, який може відставати.
+     * Тут беремо позицію прямо з плеєра, поки той не звільнений. Запис іде в
+     * окремому скоупі на IO: scope сервісу вже скасований, а процес зазвичай
+     * живе далі й дописує.
+     */
+    private fun saveFinalProgress() {
+        runCatching {
+            if (player.mediaItemCount == 0) return
+            val wasPlaying = player.isPlaying || player.playWhenReady
+            if (!wasPlaying || player.playbackState == androidx.media3.common.Player.STATE_ENDED) return
+            val chapterId = player.currentMediaItem?.mediaId ?: return
+            val chapterIndex = player.currentMediaItemIndex
+            val positionMs = player.currentPosition.coerceAtLeast(0L)
+            val speed = player.playbackParameters.speed
+            val dao = db.library()
+            CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+                runCatching {
+                    val book = dao.getBookForChapter(chapterId) ?: return@runCatching
+                    dao.updateProgress(
+                        bookId = book.book.id,
+                        chapterIndex = chapterIndex,
+                        positionMs = positionMs,
+                        // null = не чіпати lastPlayedAt: знищення сервісу — не «грали зараз», а від
+                        // цієї мітки рахується розумний відкат після перезапуску.
+                        lastPlayedAt = null,
+                        durationHint = book.book.durationMs,
+                        speed = speed,
+                        completed = null,
+                    )
+                }.onFailure { AppLog.w("PlaybackService: остання позиція не збереглася", it) }
+            }
+        }
+    }
+
     override fun onDestroy() {
+        saveFinalProgress()
         scope.cancel()
         // voiceEqualizer тримає нативний AudioEffect: без release() він протікав
         // на кожен перезапуск сервісу.

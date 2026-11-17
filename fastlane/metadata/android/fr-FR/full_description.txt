@@ -1,0 +1,40 @@
+BookVoices est un lecteur de livres audio pour votre propre collection. Ajoutez un dossier de fichiers mp3, m4b, ogg ou flac et reprenez exactement là où vous vous êtes arrêté. Sans compte, sans publicité, sans abonnement ; vos fichiers restent sur votre téléphone.
+
+ÉCOUTE
+• mp3, m4b, ogg, flac et opus ; chapitres depuis m4b, ID3 et CUE, et dossiers imbriqués CD1/CD2
+• Renommez les chapitres ou numérotez-les après confirmation
+• Reprise là où vous vous êtes arrêté, retour en arrière intelligent après une pause
+• Vitesse de lecture, sauts, gestes facultatifs avec le bouton du casque
+• Minuteur de sommeil : minutes, fin du chapitre ou du livre, secouez pour prolonger ; un horaire de nuit le lance tout seul
+• Signet en un geste depuis le volet des notifications ; notes sur les signets et recherche parmi eux
+• Reprise au retour du casque (facultatif)
+• File d'attente pour enchaîner plusieurs livres
+• Lecture en arrière-plan, widget d'écran d'accueil, commandes sur l'écran de verrouillage et dans la notification
+• Raccourci « Reprendre » sur l'icône et tuile dans les réglages rapides pour lire ou mettre en pause
+
+BIBLIOTHÈQUE
+• Étagère avec couvertures, recherche, tags, séries et favoris épinglés
+• Grille ou liste compacte, confortable même avec une centaine de livres
+• Import d'un dossier, de fichiers isolés ou d'une archive ZIP (ouvrez-la directement depuis votre gestionnaire de fichiers) ; couverture personnalisée
+• Reconnaît « Auteur - Titre » dans les noms de dossiers, avec un écran auteur
+• Recherche rapide sur plusieurs mots, sans tenir compte de la casse, des accents ni des apostrophes
+• Ajoute automatiquement les nouveaux livres des dossiers choisis
+• Signale les livres dont les fichiers ont disparu
+
+STATISTIQUES ET DONNÉES
+• Historique d'écoute avec graphiques par semaine, mois et année
+• Sauvegarde de la progression en JSON ou sur votre propre serveur WebDAV ; synchronisation entre téléphone et tablette sans livres en double
+• Sauvegarde automatique quotidienne dans le dossier de votre choix (les 7 dernières)
+• Série de jours d'écoute, objectif quotidien et export de l'historique en CSV
+• Export du catalogue, des signets et d'un résumé de livre en Markdown
+
+CONFORT
+• Thèmes Nuit, Papier et noir pur OLED
+• Affichage adapté aux grandes polices et aux tablettes
+• 7 langues : English, Українська, Polski, Deutsch, Español, Français, Português (Brasil)
+
+Confidentialité. Aucune analyse, aucun traceur, aucune inscription. L'app fonctionne hors ligne ; le réseau n'est utilisé que si vous activez vous-même la sauvegarde WebDAV.
+
+Dans cette version, toutes les fonctions Pro sont débloquées gratuitement : saut des silences et des pauses, amplification matérielle du volume (+6 dB), égaliseur vocal avec correction de hauteur, signet automatique au débranchement du casque, liste des personnages par livre et répétition A–B. Sur Google Play, elles sont proposées en achat unique : si l'app vous plaît, c'est une façon de la soutenir.
+
+BookVoices ne vend ni ne diffuse de livres : il lit ceux que vous possédez déjà.

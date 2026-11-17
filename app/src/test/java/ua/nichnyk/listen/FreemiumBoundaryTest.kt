@@ -113,6 +113,7 @@ class FreemiumBoundaryTest {
         prefs.setDoubleTapSeek(true)
         prefs.setDefaultSpeed(1.5f)
         prefs.setSkipForward(45_000)
+        prefs.setDailyGoalMinutes(30)
         prefs.setWebDavConfig(server = "https://example.com", user = "reader", autoSync = true)
         prefs.setProEntitled(false)
 
@@ -124,6 +125,7 @@ class FreemiumBoundaryTest {
         assertTrue("подвійний тап безкоштовний", s.doubleTapSeek)
         assertEquals("швидкість безкоштовна", 1.5f, s.defaultSpeed, 0.0001f)
         assertEquals("крок перемотування безкоштовний", 45_000, s.skipForwardMs)
+        assertEquals("денна ціль прослуховування безкоштовна", 30, s.dailyGoalMinutes)
         assertTrue("автосинхронізація WebDAV безкоштовна", s.webDavAutoSync)
     }
 

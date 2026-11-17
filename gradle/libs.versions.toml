@@ -89,6 +89,7 @@ androidx-datastore-preferences = { module = "androidx.datastore:datastore-prefer
 androidx-concurrent-futures-ktx = { module = "androidx.concurrent:concurrent-futures-ktx", version.ref = "concurrentFutures" }
 androidx-documentfile = { module = "androidx.documentfile:documentfile", version.ref = "documentfile" }
 androidx-work-runtime-ktx = { module = "androidx.work:work-runtime-ktx", version.ref = "work" }
+androidx-work-testing = { module = "androidx.work:work-testing", version.ref = "work" }
 play-billing-ktx = { module = "com.android.billingclient:billing-ktx", version.ref = "billing" }
 
 # Baseline Profile: профіль ставиться на пристрій цією бібліотекою, а генерується

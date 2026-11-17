@@ -1,5 +1,6 @@
 package ua.nichnyk.listen.data
 
+import ua.nichnyk.listen.forAppLocale
 import android.content.Context
 import android.content.Intent
 import android.media.MediaMetadataRetriever
@@ -68,6 +69,8 @@ data class ImportDraft(
     val sourceTreeUri: String? = null,
     /** Тека цієї книги всередині [sourceTreeUri]; див. [BookEntity.sourceFolderDocId]. */
     val sourceFolderDocId: String? = null,
+    /** Байти обкладинки з ZIP-архіву (якщо книга розпакована з архіву з картинкою всередині). */
+    val coverBytes: ByteArray? = null,
 )
 
 data class ImportProgress(
@@ -97,15 +100,21 @@ class AudioImporter(private val context: Context) {
         // Файли, створені цим імпортом (копії й розпаковане з архівів): якщо імпорт не
         // дійде до кінця, їх треба прибрати, бо жодна книга на них не посилатиметься.
         val copied = mutableListOf<File>()
+        // Один знімок дозволів на весь імпорт (див. GrantSnapshot).
+        val grants = GrantSnapshot()
         try {
             // Імена знімаємо до копіювання: ACTION_SEND дає file:// з UUID, і сортування після
             // persistOrCopy розкладає розділи в випадковому порядку. Архів ZIP розгортається
             // у файли книги: ім'я запису в архіві (шлях) править за ключ порядку.
+            var zipCoverBytes: ByteArray? = null
             val rawEntries = uris.flatMap { uri ->
                 coroutineContext.ensureActive()
                 val name = displayName(uri).orEmpty()
                 if (isZip(uri, name)) {
-                    val extracted = extractZip(uri, name, onProgress)
+                    val (extracted, coverFromZip) = extractZip(uri, name, onProgress)
+                    if (zipCoverBytes == null && coverFromZip != null) {
+                        zipCoverBytes = coverFromZip
+                    }
                     copied += extracted.map { it.file }
                     extracted.map { it.file.toUri() to it.zipPath }
                 } else {
@@ -131,12 +140,12 @@ class AudioImporter(private val context: Context) {
                 // Із запису архіву беремо лише ім'я файла: шлях у ньому — ключ порядку.
                 val fileName = name.substringAfterLast('/')
                 onProgress(ImportProgress(index, ordered.size, fileName.ifBlank { null }))
-                val resolved = persistOrCopy(uri, fileName)
+                val resolved = persistOrCopy(uri, fileName, grants)
                 resolved.copiedFile?.let { copied += it }
                 readExpanded(resolved.uri, fileName.ifBlank { null })
             }
             onProgress(ImportProgress(ordered.size, ordered.size))
-            toDraft(chapters, bestImageUri)
+            toDraft(chapters, bestImageUri, zipCoverBytes)
         } catch (e: Throwable) {
             copied.forEach { runCatching { it.delete() } }
             throw e
@@ -157,11 +166,11 @@ class AudioImporter(private val context: Context) {
         uri: Uri,
         name: String,
         onProgress: (ImportProgress) -> Unit,
-    ): List<ExtractedAudio> {
+    ): Pair<List<ExtractedAudio>, ByteArray?> {
         val dir = File(context.filesDir, "imports").apply { mkdirs() }
         val needed = sourceSize(uri)
         if (needed > 0L && availableSpace(dir) < needed + FREE_SPACE_MARGIN) {
-            error(context.getString(R.string.import_no_space))
+            error(context.forAppLocale().getString(R.string.import_no_space))
         }
         onProgress(ImportProgress(scanning = true, currentName = name.ifBlank { null }))
         val job = coroutineContext[kotlinx.coroutines.Job]
@@ -173,16 +182,18 @@ class AudioImporter(private val context: Context) {
             skipPath = ::isJunkPath,
             checkCancelled = { job?.ensureActive() },
             onEntry = { path -> onProgress(ImportProgress(scanning = true, currentName = path.substringAfterLast('/'))) },
+            isImage = ::isImageName,
         )
         return try {
-            extractor.extract { context.contentResolver.openInputStream(uri) }
+            val audio = extractor.extract { context.contentResolver.openInputStream(uri) }
+            audio to extractor.coverBytes
         } catch (_: ZipHasNoAudioException) {
-            error(context.getString(R.string.import_zip_no_audio))
+            error(context.forAppLocale().getString(R.string.import_zip_no_audio))
         } catch (_: ZipOutOfSpaceException) {
-            error(context.getString(R.string.import_no_space))
+            error(context.forAppLocale().getString(R.string.import_no_space))
         } catch (e: ZipUnreadableException) {
             AppLog.w("extractZip: архів не прочитано", e)
-            error(context.getString(R.string.import_zip_unreadable))
+            error(context.forAppLocale().getString(R.string.import_zip_unreadable))
         }
     }
 
@@ -206,13 +217,13 @@ class AudioImporter(private val context: Context) {
         val treePersisted = persist(treeUri)
         onProgress(ImportProgress(scanning = true))
         val rootId = runCatching { DocumentsContract.getTreeDocumentId(treeUri) }.getOrNull()
-            ?: error(context.getString(R.string.import_folder_failed))
+            ?: error(context.forAppLocale().getString(R.string.import_folder_failed))
 
         val audioFiles = mutableListOf<TreeEntry>()
         val imageFiles = mutableListOf<TreeEntry>()
         val cueFiles = mutableListOf<TreeEntry>()
         collectTree(treeUri, rootId, relative = "", depth = 0, audio = audioFiles, images = imageFiles, cues = cueFiles)
-        if (audioFiles.isEmpty()) error(context.getString(R.string.import_folder_empty))
+        if (audioFiles.isEmpty()) error(context.forAppLocale().getString(R.string.import_folder_empty))
 
         val bookFolders = findBookFolders(audioFiles.map { it.relativePath })
         val ordered = audioFiles.sortedWith { a, b -> naturalCompare(a.relativePath, b.relativePath) }
@@ -229,8 +240,14 @@ class AudioImporter(private val context: Context) {
                 // Прогрес рахуємо наскрізно по всіх книгах, інакше лічильник
                 // скидався б на кожній підпапці.
                 val chapters = readChapters(entries, treePersisted, copied, total, doneBefore, onProgress, cueFiles)
+                // Запасна обкладинка — лише з теки-предка, під якою ця книга одна, і лише
+                // картинки прямо в ній. Раніше бралася група "" — туди падали й картинки
+                // з тек без аудіо («!Smart AudioBook Player Statistics/Інша книга.jpg»),
+                // і кожна книга без своєї обкладинки отримувала чужу.
                 val cover = findBestFolderCover(imagesByGroup[key].orEmpty())
-                    ?: findBestFolderCover(imagesByGroup[""].orEmpty())
+                    ?: soleBookAncestors(key, bookFolders).firstNotNullOfOrNull { dir ->
+                        findBestFolderCover(imageFiles.filter { parentDir(it.relativePath) == dir })
+                    }
                 val draft = toDraft(chapters, cover)
                 val (folderAuthor, folderTitle) = parseFolderAuthorAndTitle(key, rootName)
                 val resolvedTitle = folderTitle ?: draft.title
@@ -277,7 +294,7 @@ class AudioImporter(private val context: Context) {
         persist(treeUri)
         val rootId = folderDocumentId
             ?: runCatching { DocumentsContract.getTreeDocumentId(treeUri) }.getOrNull()
-            ?: error(context.getString(R.string.import_folder_failed))
+            ?: error(context.forAppLocale().getString(R.string.import_folder_failed))
         val audio = mutableListOf<TreeEntry>()
         val images = mutableListOf<TreeEntry>()
         collectTree(treeUri, rootId, relative = "", depth = 0, audio = audio, images = images)
@@ -307,14 +324,14 @@ class AudioImporter(private val context: Context) {
     suspend fun listBookCandidates(treeUri: Uri): List<LibraryBookCandidate> = withContext(Dispatchers.IO) {
         persist(treeUri)
         val rootId = runCatching { DocumentsContract.getTreeDocumentId(treeUri) }.getOrNull()
-            ?: error(context.getString(R.string.import_folder_failed))
+            ?: error(context.forAppLocale().getString(R.string.import_folder_failed))
         val audio = mutableListOf<TreeEntry>()
         val images = mutableListOf<TreeEntry>()
         collectTree(treeUri, rootId, relative = "", depth = 0, audio = audio, images = images)
         if (audio.isEmpty()) return@withContext emptyList()
         val bookFolders = findBookFolders(audio.map { it.relativePath })
         val rootName = documentName(treeUri, rootId)?.substringBeforeLast('.')?.ifBlank { null }
-        val unknown = context.getString(R.string.unknown_author)
+        val unknown = context.forAppLocale().getString(R.string.unknown_author)
         audio.groupBy { groupKey(it.relativePath, bookFolders) }.mapNotNull { (key, entries) ->
             val folderDocId = resolveFolderDocumentId(treeUri, rootId, key) ?: return@mapNotNull null
             val (folderAuthor, folderTitle) = parseFolderAuthorAndTitle(key, rootName)
@@ -344,7 +361,7 @@ class AudioImporter(private val context: Context) {
         val images = mutableListOf<TreeEntry>()
         val cues = mutableListOf<TreeEntry>()
         collectTree(treeUri, folderDocId, relative = "", depth = 0, audio = audio, images = images, cues = cues)
-        if (audio.isEmpty()) error(context.getString(R.string.import_folder_empty))
+        if (audio.isEmpty()) error(context.forAppLocale().getString(R.string.import_folder_empty))
         val ordered = audio.sortedWith { a, b -> naturalCompare(a.relativePath, b.relativePath) }
         val copied = java.util.Collections.synchronizedList(mutableListOf<File>())
         val done = java.util.concurrent.atomic.AtomicInteger(0)
@@ -480,6 +497,7 @@ class AudioImporter(private val context: Context) {
         cues: List<TreeEntry> = emptyList(),
     ): List<ImportedChapter> = coroutineScope {
         val gate = Semaphore(METADATA_PARALLELISM)
+        val grants = GrantSnapshot()
         // CUE читаємо один раз на теку, а не на кожен аудіофайл.
         val cueByDir = cues.groupBy { parentDir(it.relativePath) }
             .mapValues { (_, entries) -> entries.flatMap { readCueFiles(it) } }
@@ -491,7 +509,7 @@ class AudioImporter(private val context: Context) {
                     val resolved = if (treePersisted) {
                         ResolvedAudio(entry.uri)
                     } else {
-                        persistOrCopy(entry.uri, entry.name)
+                        persistOrCopy(entry.uri, entry.name, grants)
                     }
                     resolved.copiedFile?.let { copied += it }
                     val dir = parentDir(entry.relativePath)
@@ -535,11 +553,15 @@ class AudioImporter(private val context: Context) {
         return order.map { chapters[it] }
     }
 
-    private fun toDraft(rawChapters: List<ImportedChapter>, folderImageUri: String? = null): ImportDraft {
-        require(rawChapters.isNotEmpty()) { context.getString(R.string.import_audio_failed) }
+    private fun toDraft(
+        rawChapters: List<ImportedChapter>,
+        folderImageUri: String? = null,
+        zipCoverBytes: ByteArray? = null,
+    ): ImportDraft {
+        require(rawChapters.isNotEmpty()) { context.forAppLocale().getString(R.string.import_audio_failed) }
         val chapters = orderedByTagsIfNeeded(rawChapters)
         val firstChapter = chapters.first()
-        val defaultUnknown = context.getString(R.string.unknown_author)
+        val defaultUnknown = context.forAppLocale().getString(R.string.unknown_author)
         var author = chapters.mapNotNull { it.metaAuthor }.firstOrNull { it.isNotBlank() }
         val fromTags = !author.isNullOrBlank()
         var title = firstChapter.metaTitle?.takeIf { !it.isNullOrBlank() }
@@ -560,7 +582,7 @@ class AudioImporter(private val context: Context) {
             title = firstChapter.title.substringBeforeLast('.')
         }
 
-        val safeTitle = title.ifBlank { context.getString(R.string.new_book_title) }
+        val safeTitle = title.ifBlank { context.forAppLocale().getString(R.string.new_book_title) }
         val safeAuthor = author?.ifBlank { defaultUnknown } ?: defaultUnknown
         return ImportDraft(
             title = safeTitle,
@@ -569,12 +591,13 @@ class AudioImporter(private val context: Context) {
             chapters = chapters,
             coverFromAudio = firstChapter.uri,
             coverImageUri = folderImageUri,
+            coverBytes = zipCoverBytes,
         )
     }
 
     /**
      * Байти обкладинки — рівно один раз, під час запису книги.
-     * Спершу вбудована в перший розділ, потім окремий файл у теці книги.
+     * Спершу вбудована в перший розділ, потім окремий файл у теці книги або з ZIP-архіву.
      */
     suspend fun loadCover(draft: ImportDraft): ByteArray? = withContext(Dispatchers.IO) {
         draft.coverFromAudio?.let { uri ->
@@ -590,10 +613,12 @@ class AudioImporter(private val context: Context) {
             if (embedded != null) return@withContext embedded
         }
         draft.coverImageUri?.let { uri ->
-            runCatching {
+            val fromUri = runCatching {
                 context.contentResolver.openInputStream(uri.toUri())?.use { it.readBytes() }
             }.getOrNull()
+            if (fromUri != null) return@withContext fromUri
         }
+        draft.coverBytes
     }
 
     private fun read(uri: Uri, knownName: String? = null): ImportedChapter? {
@@ -680,7 +705,7 @@ class AudioImporter(private val context: Context) {
             context.contentResolver.openInputStream(uri)?.use { raw ->
                 // Потоком: обкладинку на мегабайти в теґу перестрибуємо, а не читаємо.
                 val marks = Id3ChapterParser.parse(raw.buffered(), MAX_ID3_BYTES) { n ->
-                    context.getString(R.string.chapter_number, n)
+                    context.forAppLocale().getString(R.string.chapter_number, n)
                 }
                 cueRanges(marks, durationMs)
             }.orEmpty()
@@ -690,7 +715,7 @@ class AudioImporter(private val context: Context) {
     private fun readCueFiles(entry: TreeEntry): List<CueFile> = runCatching {
         val bytes = context.contentResolver.openInputStream(entry.uri)?.use { it.readCapped(MAX_CUE_BYTES) }
             ?: return@runCatching emptyList()
-        CueParser.parse(CueParser.decode(bytes)) { n -> context.getString(R.string.chapter_number, n) }
+        CueParser.parse(CueParser.decode(bytes)) { n -> context.forAppLocale().getString(R.string.chapter_number, n) }
     }.onFailure { AppLog.w("readCueFiles: CUE не розібрано", it) }.getOrDefault(emptyList())
 
     private fun java.io.InputStream.readCapped(limit: Int): ByteArray {
@@ -712,7 +737,7 @@ class AudioImporter(private val context: Context) {
                 FileInputStream(pfd.fileDescriptor).use { fis ->
                     val size = pfd.statSize.takeIf { it > 0 } ?: fis.channel.size()
                     val marks = Mp4ChapterParser.parse(fis.channel, size, durationMs) { n ->
-                        context.getString(R.string.chapter_number, n)
+                        context.forAppLocale().getString(R.string.chapter_number, n)
                     }
                     Mp4ChapterParser.toRanges(marks, durationMs)
                 }
@@ -722,28 +747,84 @@ class AudioImporter(private val context: Context) {
 
     private data class ResolvedAudio(val uri: Uri, val copiedFile: File? = null)
 
-    private fun persistOrCopy(uri: Uri, originalName: String = ""): ResolvedAudio {
+    /**
+     * Знімок постійних SAF-дозволів на час одного імпорту. `persistedUriPermissions` —
+     * IPC до системи, а раніше його читали двічі на кожен файл (persist + isPersisted):
+     * на архіві чи теці зі сотнями файлів це сотні зайвих викликів. Тепер список
+     * читається один раз, а нові дозволи дописуються локально. Доступ із кількох
+     * потоків (readChapters) серіалізовано.
+     */
+    private inner class GrantSnapshot {
+        private var readUris: MutableList<Uri>? = null
+        private var total = 0
+
+        @Synchronized
+        private fun ensureLoaded() {
+            if (readUris != null) return
+            val all = runCatching { context.contentResolver.persistedUriPermissions }
+                .getOrDefault(emptyList())
+            total = all.size
+            readUris = all.filter { it.isReadPermission }.map { it.uri }.toMutableList()
+        }
+
+        @Synchronized
+        fun count(): Int {
+            ensureLoaded()
+            return total
+        }
+
+        @Synchronized
+        fun hasRead(uri: Uri): Boolean {
+            ensureLoaded()
+            return readUris!!.any { it == uri }
+        }
+
+        /** Документ усередині збереженого дерева доступний разом із деревом. */
+        @Synchronized
+        fun coveredByTree(uri: Uri): Boolean {
+            ensureLoaded()
+            return readUris!!.any { belongsToTree(uri, it) }
+        }
+
+        @Synchronized
+        fun recordGranted(uri: Uri) {
+            ensureLoaded()
+            if (readUris!!.none { it == uri }) {
+                readUris!!.add(uri)
+                total++
+            }
+        }
+    }
+
+    private fun persistOrCopy(
+        uri: Uri,
+        originalName: String = "",
+        grants: GrantSnapshot = GrantSnapshot(),
+    ): ResolvedAudio {
         // file:// постійного дозволу не має й не потребує. Раніше для кожного такого файла
         // (а це всі розпаковані з ZIP) ішов виклик до системи, що кидав SecurityException,
         // і в лог писався цілий стек: на архіві зі сотнею файлів — сотня зайвих викликів.
         if (uri.scheme == "file") return ResolvedAudio(uri)
-        persist(uri)
-        if (isPersisted(uri)) return ResolvedAudio(uri)
+        persist(uri, grants)
+        if (isPersisted(uri, grants)) return ResolvedAudio(uri)
         return copyToLocal(uri, originalName)
     }
 
-    private fun isPersisted(uri: Uri): Boolean {
-        val granted = context.contentResolver.persistedUriPermissions.filter { it.isReadPermission }
-        if (granted.any { it.uri == uri }) return true
+    private fun isPersisted(uri: Uri, grants: GrantSnapshot): Boolean {
+        if (grants.hasRead(uri)) return true
         // Документ усередині збереженого дерева доступний разом із деревом,
         // хоча його URI не збігається із записаним дозволом. Без цієї перевірки
         // кожен такий файл дарма копіювався у сховище застосунку.
-        return granted.any { perm -> belongsToTree(uri, perm.uri) }
+        return grants.coveredByTree(uri)
     }
 
     private fun copyToLocal(uri: Uri, originalName: String): ResolvedAudio {
         val rawName = originalName.ifBlank { displayName(uri) ?: "audio" }
-        val ext = rawName.substringAfterLast('.', "mp3").lowercase().ifBlank { "mp3" }
+        // Розширення йде в ім'я файла: лишаємо лише латиницю й цифри та обмежуємо довжину.
+        val ext = rawName.substringAfterLast('.', "mp3").lowercase()
+            .filter { it in 'a'..'z' || it in '0'..'9' }
+            .take(8)
+            .ifBlank { "mp3" }
         val stem = rawName.substringBeforeLast('.')
             .replace(Regex("[\\\\/:*?\"<>|]"), "_")
             .take(60)
@@ -754,13 +835,13 @@ class AudioImporter(private val context: Context) {
         // сховище й падало посеред процесу, лишаючи по собі обрізаний файл.
         val needed = sourceSize(uri)
         if (needed > 0L && availableSpace(dir) < needed + FREE_SPACE_MARGIN) {
-            error(context.getString(R.string.import_no_space))
+            error(context.forAppLocale().getString(R.string.import_no_space))
         }
         val dest = File(dir, "${UUID.randomUUID()}_$stem.$ext")
         try {
             context.contentResolver.openInputStream(uri)?.use { input ->
                 dest.outputStream().use { input.copyTo(it) }
-            } ?: error(context.getString(R.string.import_file_failed))
+            } ?: error(context.forAppLocale().getString(R.string.import_file_failed))
         } catch (e: Throwable) {
             // Обрізаний файл гірший за його відсутність: він пройде як «розділ» і зламає книгу.
             dest.delete()
@@ -771,7 +852,7 @@ class AudioImporter(private val context: Context) {
 
     /** Назва глави з локалізованим запасним варіантом, коли ні метадані, ні імʼя файла не дали тексту. */
     private fun chapterTitleOrNumber(fileName: String, metaTitle: String?): String =
-        prettyChapterTitle(fileName, metaTitle).ifBlank { context.getString(R.string.chapter_word) }
+        prettyChapterTitle(fileName, metaTitle).ifBlank { context.forAppLocale().getString(R.string.chapter_word) }
 
     /**
      * Скільки місця реально доступно. StorageManager враховує кеш, який система готова
@@ -794,11 +875,28 @@ class AudioImporter(private val context: Context) {
     }.getOrDefault(0L)
 
     /** true — дозвіл збережено, отже копіювати файл не потрібно. */
-    private fun persist(uri: Uri): Boolean {
+    private fun persist(uri: Uri, grants: GrantSnapshot = GrantSnapshot()): Boolean {
         val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+        // Система тримає обмежену кількість постійних дозволів (128 до Android 11,
+        // 512 далі) і при переповненні мовчки відкликає найстаріші — тобто давно
+        // імпортовані книги раптом втрачали б файли. Біля межі нових дозволів не
+        // беремо: повертаємо false, і викликач копіює файл у памʼять застосунку.
+        // Старі дозволи не чіпаємо — не можна ризикувати доступом до наявних книг.
+        if (grants.hasRead(uri)) return true
+        val count = grants.count()
+        if (!persistedGrantsHaveRoom(count, android.os.Build.VERSION.SDK_INT)) {
+            AppLog.w("AudioImporter.persist: $count постійних дозволів, ліміт майже вичерпано — копіюємо файл")
+            return false
+        }
         return runCatching {
             context.contentResolver.takePersistableUriPermission(uri, flags)
-            true
+            // Виклик міг пройти без винятку, а дозвіл система не зберегла (провайдер без
+            // підтримки постійних дозволів): перевіряємо, що він справді з'явився, інакше
+            // викликач скопіює файл. Один IPC на новий дозвіл, не на кожен файл.
+            val present = context.contentResolver.persistedUriPermissions
+                .any { it.uri == uri && it.isReadPermission }
+            if (present) grants.recordGranted(uri) else AppLog.w("AudioImporter.persist: дозвіл не з'явився після take — копіюємо файл")
+            present
         }.onFailure {
             // Не помилка сама по собі: ACTION_SEND часто не дає постійного дозволу,
             // і тоді файл доведеться копіювати. Але саме звідси ростуть скарги
@@ -828,6 +926,16 @@ class AudioImporter(private val context: Context) {
     }
 
     companion object {
+        /** Ліміт постійних SAF-дозволів системи: 128 до Android 11 (API 30), 512 починаючи з нього. */
+        internal fun persistedGrantLimit(sdkInt: Int): Int = if (sdkInt >= 30) 512 else 128
+
+        /** Запас до ліміту, щоб не впертися в нього впритул. */
+        private const val GRANT_RESERVE = 8
+
+        /** true — ще можна брати новий постійний дозвіл, не витісняючи старі. */
+        internal fun persistedGrantsHaveRoom(count: Int, sdkInt: Int): Boolean =
+            count < persistedGrantLimit(sdkInt) - GRANT_RESERVE
+
         /** Скільки файлів читати одночасно; більше — лише зайва пам'ять під буфери. */
         private const val METADATA_PARALLELISM = 4
 
@@ -936,6 +1044,28 @@ class AudioImporter(private val context: Context) {
                 key.isEmpty() || relativePath == key || relativePath.startsWith("$key/")
             }
             return matches.maxByOrNull { it.length } ?: ""
+        }
+
+        /**
+         * Теки-предки книги, від найближчої до кореня вибору, під якими ця книга — єдина.
+         * Лише з них можна позичити обкладинку: «Автор/cover.jpg» над єдиною
+         * «Автор/Назва» — так; корінь бібліотеки на 30 книг чи сусідня тека без
+         * аудіо — ні.
+         */
+        fun soleBookAncestors(bookKey: String, bookFolders: Set<String>): List<String> {
+            if (bookKey.isEmpty()) return emptyList()
+            val out = mutableListOf<String>()
+            var dir = bookKey.substringBeforeLast('/', "")
+            while (true) {
+                val booksUnder = bookFolders.count { f ->
+                    dir.isEmpty() || f == dir || f.startsWith("$dir/")
+                }
+                if (booksUnder != 1) break
+                out += dir
+                if (dir.isEmpty()) break
+                dir = dir.substringBeforeLast('/', "")
+            }
+            return out
         }
 
         /** Назва на полиці — імʼя теки книги, не весь шлях «Жанр/Автор/Назва». */

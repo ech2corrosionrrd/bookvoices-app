@@ -65,11 +65,14 @@ object WebDavClient {
             // HttpURLConnection не приймає PROPFIND, тому перевіряємо наявність шляху
             // через HEAD — цього достатньо, щоб відрізнити «немає теки» від «немає доступу».
             val connection = createConnection(normalizedUrl, "HEAD", username, pass, timeoutMs = 8_000)
-            val code = connection.responseCode
-            // responseMessage треба прочитати ДО disconnect(), інакше він порожній.
-            val message = runCatching { connection.responseMessage }.getOrNull().orEmpty()
-            connection.disconnect()
-            describeTestFailure(code, message)?.let { throw it }
+            try {
+                val code = connection.responseCode
+                // responseMessage треба прочитати ДО disconnect(), інакше він порожній.
+                val message = runCatching { connection.responseMessage }.getOrNull().orEmpty()
+                describeTestFailure(code, message)?.let { throw it }
+            } finally {
+                connection.disconnect()
+            }
         }
 
     suspend fun uploadFile(
@@ -82,21 +85,37 @@ object WebDavClient {
         val connection = createConnection(
             targetUrl(serverUrl, fileName), "PUT", username, pass, timeoutMs = 12_000,
         )
-        connection.doOutput = true
-        connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+        try {
+            connection.doOutput = true
+            connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
 
-        val bytes = content.toByteArray(StandardCharsets.UTF_8)
-        connection.setFixedLengthStreamingMode(bytes.size)
-        connection.outputStream.use { it.write(bytes) }
+            val bytes = content.toByteArray(StandardCharsets.UTF_8)
+            connection.setFixedLengthStreamingMode(bytes.size)
+            connection.outputStream.use { it.write(bytes) }
 
-        val code = connection.responseCode
-        val message = runCatching { connection.responseMessage }.getOrNull().orEmpty()
-        connection.disconnect()
-        when {
-            code in 200..299 -> Unit
-            code == 401 || code == 403 -> throw WebDavError.Auth
-            code == 404 -> throw WebDavError.FolderNotFound
-            else -> throw WebDavError.Http(code, message)
+            val code = connection.responseCode
+            val message = runCatching { connection.responseMessage }.getOrNull().orEmpty()
+            when {
+                code in 200..299 -> Unit
+                code == 401 || code == 403 -> throw WebDavError.Auth
+                code == 404 -> throw WebDavError.FolderNotFound
+                else -> throw WebDavError.Http(code, message)
+            }
+        } finally {
+            // Тіло відповіді 4xx/5xx лежить в errorStream: непрочитане й незакрите воно
+            // тримає з'єднання. Читаємо з обмеженням і закриваємо.
+            runCatching {
+                connection.errorStream?.use { stream ->
+                    val buf = ByteArray(1024)
+                    var left = 8 * 1024
+                    while (left > 0) {
+                        val n = stream.read(buf, 0, minOf(buf.size, left))
+                        if (n < 0) break
+                        left -= n
+                    }
+                }
+            }
+            connection.disconnect()
         }
     }
 
@@ -210,10 +229,9 @@ object WebDavClient {
         conn.connectTimeout = timeoutMs
         conn.readTimeout = timeoutMs
         if (username.isNotBlank() || pass.isNotBlank()) {
-            // Те саме, що робить normalizeUrl з адресою: пробіл на краю — артефакт
-            // вставки з буфера, а не вибір користувача. Внутрішні пробіли лишаємо:
-            // у власному WebDAV пароль цілком може їх містити.
-            val auth = "${username.trim()}:${pass.trim()}"
+            // Обрізаємо лише ім'я користувача (пробіл на краю — артефакт вставки з буфера).
+            // Пароль передаємо як є: пробіли по краях можуть бути його частиною.
+            val auth = "${username.trim()}:$pass"
             val encoded = Base64.encodeToString(auth.toByteArray(StandardCharsets.UTF_8), Base64.NO_WRAP)
             conn.setRequestProperty("Authorization", "Basic $encoded")
         }

@@ -119,7 +119,22 @@
     <string name="section_backup">Резервне копіювання</string>
     <string name="backup_desc">Збережіть закладки, мітки, історію сесій і позиції у JSON. Відновлення замінює поточну полицю (аудіофайли лишаються на місці). Черга «далі» й папки бібліотеки у файл не входять — вони лишаються на цьому телефоні.</string>
     <string name="btn_backup">Створити бекап</string>
+    <string name="btn_backup_save">Зберегти у файл</string>
+    <string name="backup_save_failed">Не вдалося зберегти файл</string>
+    <string name="file_saved">Файл збережено</string>
     <string name="btn_restore">Відновити</string>
+    <string name="auto_backup_title">Автокопія в теку</string>
+    <string name="auto_backup_desc">Раз на день застосунок сам зберігає копію у вибрану теку й тримає останні 7. Виберіть теку на картці пам\'яті або ту, яку синхронізує Google Диск чи інший застосунок, — тоді прогрес і закладки переживуть втрату телефона. Відновити — кнопкою «Відновити» вище.</string>
+    <string name="auto_backup_pick">Вибрати теку</string>
+    <string name="auto_backup_change">Змінити теку</string>
+    <string name="auto_backup_now">Зберегти зараз</string>
+    <string name="auto_backup_off">Вимкнути</string>
+    <string name="auto_backup_folder">Тека: %s</string>
+    <string name="auto_backup_last">Остання копія: %s</string>
+    <string name="auto_backup_never">Перша копія з\'явиться за хвилину</string>
+    <string name="auto_backup_failed">Не вдалося зберегти копію. Можливо, теку видалено або доступ до неї втрачено — виберіть теку знову.</string>
+    <string name="auto_backup_saved">Копію збережено</string>
+    <string name="auto_backup_pick_failed">Не вдалося отримати доступ до цієї теки</string>
     <string name="backup_restored_success">Полицю замінено даними з копії.</string>
     <string name="backup_restore_failed">Помилка читання файлу резервної копії</string>
     <string name="section_cloud">Хмарна синхронізація (WebDAV)</string>
@@ -143,6 +158,18 @@
 
     <string name="version_format">Версія %s</string>
     <string name="rate_app">Оцінити BookVoices у Google Play</string>
+    <string name="share_log">Поділитися журналом</string>
+    <string name="share_log_desc">Лише записи BookVoices, без шляхів до файлів. Нічого не надсилається автоматично.</string>
+    <string name="report_problem">Повідомити про проблему</string>
+    <string name="report_problem_desc">Щось не працює? Напишіть розробнику. До листа додасться журнал діагностики без назв книг і шляхів до файлів, і ви побачите все перед відправкою.</string>
+    <string name="report_by_email">Написати листом</string>
+    <string name="report_on_github">GitHub</string>
+    <string name="report_email_subject">BookVoices %1$s: проблема</string>
+    <string name="report_email_body">Що сталося:\n\n\nЩо ви робили перед цим:\n\n</string>
+    <string name="report_issue_title">Проблема в BookVoices</string>
+    <string name="report_no_email_app">Поштового застосунку не знайдено. Спробуйте GitHub.</string>
+    <string name="report_no_browser">Не вдалося відкрити браузер.</string>
+    <string name="shortcut_resume_long">Продовжити «%1$s»</string>
     <string name="seconds_format">%d с</string>
     <string name="minutes_format">%d хв</string>
     <string name="btn_start">Почати</string>
@@ -180,6 +207,23 @@
     <string name="new_book_title">Нова книга</string>
     <string name="chapter_word">Розділ</string>
     <string name="chapter_number">Розділ %1$d</string>
+    <string name="chapters_number_action">Пронумерувати</string>
+    <string name="chapter_rename_hint">Утримуйте розділ, щоб перейменувати його</string>
+    <string name="chapter_rename_title">Перейменувати розділ</string>
+    <string name="chapters_number_confirm_title">Пронумерувати розділи?</string>
+    <string name="chapters_numbered_none">Розділи вже пронумеровано</string>
+    <plurals name="chapters_number_confirm_msg">
+        <item quantity="one">Розділів: %1$d. Усі назви зміняться на «%2$s», «%3$s» і так далі. Старі назви не зберігаються.</item>
+        <item quantity="few">Розділів: %1$d. Усі назви зміняться на «%2$s», «%3$s» і так далі. Старі назви не зберігаються.</item>
+        <item quantity="many">Розділів: %1$d. Усі назви зміняться на «%2$s», «%3$s» і так далі. Старі назви не зберігаються.</item>
+        <item quantity="other">Розділів: %1$d. Усі назви зміняться на «%2$s», «%3$s» і так далі. Старі назви не зберігаються.</item>
+    </plurals>
+    <plurals name="chapters_numbered">
+        <item quantity="one">Перейменовано розділів: %d</item>
+        <item quantity="few">Перейменовано розділів: %d</item>
+        <item quantity="many">Перейменовано розділів: %d</item>
+        <item quantity="other">Перейменовано розділів: %d</item>
+    </plurals>
     <string name="demo_book_title">BookVoices. Вступ</string>
     <string name="demo_book_author">BookVoices</string>
     <string name="import_no_space">Замало вільного місця, щоб скопіювати файл</string>
@@ -392,8 +436,8 @@
     <string name="export_catalog_exported_at">Експортовано: %s</string>
     <string name="export_catalog_total_books">Всього книг: %d</string>
     <string name="export_catalog_total_duration">Загальна тривалість: %s</string>
-    <string name="auto_bookmark_bluetooth">Автозакладка при розриві Bluetooth</string>
-    <string name="auto_bookmark_bluetooth_desc">Автоматично зберігати мітку при вимкненні авто або навушників</string>
+    <string name="auto_bookmark_bluetooth">Автозакладка при від\'єднанні гарнітури</string>
+    <string name="auto_bookmark_bluetooth_desc">Зберігає мітку, коли зникає звук Bluetooth або дротових навушників</string>
     <string name="resume_on_reconnect">Продовжувати, коли навушники знову підключено</string>
     <string name="resume_on_reconnect_desc">Після короткого розриву (до 15 хвилин) книга сама продовжиться, щойно навушники чи авто підключаться знову</string>
     <string name="bookmark_bluetooth_disconnected">Розрив Bluetooth о %s</string>
@@ -405,7 +449,7 @@
     <string name="pro_lifetime_desc">Довічна преміум-ліцензія без щомісячних платежів</string>
     <string name="pro_benefit_skip_silence">Пропуск пауз та тиші між реченнями</string>
     <string name="pro_benefit_volume_boost">Апаратний підсилювач звуку Volume Boost (+6 dB)</string>
-    <string name="pro_benefit_bluetooth">Автозакладка при розриві Bluetooth</string>
+    <string name="pro_benefit_bluetooth">Автозакладка при від\'єднанні гарнітури</string>
     <string name="pro_benefit_equalizer">Голосовий еквалайзер і корекція висоти тону</string>
     <string name="pro_benefit_characters">Список дійових осіб для кожної книги</string>
     <string name="pro_locked">💎 Доступно в Pro</string>
@@ -447,4 +491,19 @@
     <string name="mark_finished">Позначити дослуханою</string>
     <string name="mark_unfinished">Зняти позначку «дослухано»</string>
     <string name="pro_benefit_pitch">Регулювання висоти голосу</string>
+    <string name="queue_move_up">Перемістити вище</string>
+    <string name="queue_move_down">Перемістити нижче</string>
+    <string name="share_book_summary">Поділитися конспектом книги</string>
+    <string name="change_cover">Змінити обкладинку</string>
+    <string name="export_history_csv">Експортувати історію прослуховування (CSV)</string>
+    <string name="stats_streak_current">Серія: %d дн.</string>
+    <string name="stats_streak_best">Рекорд: %d дн.</string>
+    <string name="daily_goal_title">Ціль на день</string>
+    <string name="daily_goal_off">Вимкнено</string>
+    <string name="daily_goal_set">Встановити ціль на день</string>
+    <string name="daily_goal_progress">Сьогодні: %1$s / %2$s</string>
+    <string name="ab_repeat_title">Повтор A–B</string>
+    <string name="ab_repeat_waiting_b">A: %s → торкніться для B</string>
+    <string name="ab_repeat_active">A–B: %1$s – %2$s</string>
+    <string name="pro_benefit_ab_repeat">Повтор фрагмента A–B</string>
 </resources>

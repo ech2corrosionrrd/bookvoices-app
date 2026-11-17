@@ -71,6 +71,9 @@ class AppContainer(private val app: Application) {
     private val pendingImports = Channel<List<Uri>>(Channel.BUFFERED)
     val importRequests: Flow<List<Uri>> = pendingImports.receiveAsFlow()
 
+    /** Стан імпорту на рівні процесу: busy, прогрес, скасування й підсумки (див. [ImportState]). */
+    val imports = ua.nichnyk.listen.ui.screens.ImportState()
+
     fun offerImport(uris: List<Uri>) {
         val unique = uris.distinct()
         if (unique.isNotEmpty()) pendingImports.trySend(unique)
@@ -93,7 +96,7 @@ class AppContainer(private val app: Application) {
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             return when {
                 modelClass.isAssignableFrom(LibraryViewModel::class.java) ->
-                    LibraryViewModel(app, repo, player, prefs, importRequests) as T
+                    LibraryViewModel(app, repo, player, prefs, importRequests, imports) as T
                 modelClass.isAssignableFrom(PlayerViewModel::class.java) ->
                     PlayerViewModel(player, repo, prefs) as T
                 modelClass.isAssignableFrom(SettingsViewModel::class.java) ->
@@ -123,6 +126,12 @@ class ListenApp : Application() {
         container.player.initialize()
         appScope.launch {
             container.prefs.initSecrets()
+            // Віджети, розміщені старою версією, тримають застарілі PendingIntent'и: один
+            // перемальований на старті віджет замінює їх на дії неекспортованого приймача.
+            runCatching {
+                ua.nichnyk.listen.ui.widget.NowPlayingWidgetProvider
+                    .updateAllWidgets(this@ListenApp, container.player.state.value)
+            }.onFailure { AppLog.w("ListenApp: не вдалося оновити віджети на старті", it) }
             // Раз на запуск, а не на кожен запис прослуховування: надгробки й сесії
             // старіють днями, а recordListening приходить кожні 30 секунд відтворення.
             runCatching { container.repo.pruneHistory() }
@@ -139,6 +148,13 @@ class ListenApp : Application() {
                 appScope.launch {
                     container.billing.resolvedIsPro.collect { container.prefs.setProEntitled(it) }
                 }
+            }
+            // Окремою корутиною: collect нижче не повертається.
+            appScope.launch {
+                container.prefs.settings
+                    .map { it.autoBackupTreeUri.isNotBlank() }
+                    .distinctUntilChanged()
+                    .collect { enabled -> ua.nichnyk.listen.data.FolderBackupScheduler.apply(this@ListenApp, enabled) }
             }
             container.prefs.settings
                 .map { it.webDavAutoSync }

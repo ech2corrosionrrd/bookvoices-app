@@ -14,6 +14,9 @@
 -keep class ua.nichnyk.listen.data.WebDavSyncWorker {
     public <init>(android.content.Context, androidx.work.WorkerParameters);
 }
+-keep class ua.nichnyk.listen.data.FolderBackupWorker {
+    public <init>(android.content.Context, androidx.work.WorkerParameters);
+}
 
 # --- Media3 ---
 # media3 постачає власні consumer-правила; додаткові -dontwarn для необов'язкових

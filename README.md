@@ -8,7 +8,7 @@
 |---|---|
 | Модуль | `app/` (`app.bookvoices`) |
 | Мін. Android | 8.0 (API 26) |
-| Останній реліз | **v1.12.0** (у `main` є незарелізена робота — див. `ROADMAP.md`) |
+| Останній реліз | **v1.17.0** (поточний стан і робота після тега — див. `ROADMAP.md` і `CHANGELOG.md`) |
 | Модель | Freemium + Lifetime Pro ($4.99) |
 
 Це публічне дзеркало **лише локального** застосунку. Розробка ведеться в
@@ -28,7 +28,7 @@
 - Фон, віджет, таймер сну, черга «далі», закладки й нотатки
 - Android Auto (дерево, resume, голосовий пошук)
 - 7 мов інтерфейсу, теми Ніч / Папір / OLED
-- Pro: Skip Silence, Volume Boost, EQ + pitch, автозакладка BT, персонажі
+- Pro (6 функцій): Skip Silence, Volume Boost, EQ + pitch, автозакладка BT, персонажі, повтор фрагмента A–B (у FOSS-збірці з `-Pfoss=true` відкриті без Play Billing)
 
 Деталі для користувача й збірки: [`docs/`](docs/), [`BUILD.md`](BUILD.md),
 [`ROADMAP.md`](ROADMAP.md).
@@ -37,8 +37,8 @@
 
 ## Поставити
 
-1. [Releases](../../releases) → `bookvoices-<версія>.apk`, **або** Google Play
-   (коли опубліковано).
+1. [Releases](../../releases) → `bookvoices-<версія>.apk` (або `bookvoices-<версія>-foss.apk` без Google Play Billing), **або** [Google Play](https://play.google.com/store/apps/details?id=app.bookvoices).
+
 2. Дозвольте встановлення з цього джерела (для APK).
 3. Оновлення поверх працює, якщо підпис той самий.
 
@@ -59,8 +59,9 @@ JDK 17, `ANDROID_HOME`. Деталі — [`BUILD.md`](BUILD.md).
 
 ```bat
 gradlew.bat :app:assembleDebug
-gradlew.bat :app:assembleRelease -PreleaseTag=v1.12.0
-gradlew.bat :app:bundleRelease -PreleaseTag=v1.12.0
+gradlew.bat :app:assembleRelease -PreleaseTag=v1.17.0
+gradlew.bat :app:assembleRelease -Pfoss=true -PreleaseTag=v1.17.0
+gradlew.bat :app:bundleRelease -PreleaseTag=v1.17.0
 gradlew.bat testDebugUnitTest lintDebug
 ```
 

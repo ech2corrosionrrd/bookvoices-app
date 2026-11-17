@@ -79,6 +79,7 @@ class SleepTimerTest {
     fun tearDown() = runBlocking {
         runCatching { container.prefs.setNightTimerEnabled(false) }
         runCatching { player.cancelSleep() }
+        player.resetNightTimerDismissal()
         runCatching { player.clearIfCurrent(bookId) }
         runCatching { container.db.library().deleteBook(bookId) }
         dir.deleteRecursively()

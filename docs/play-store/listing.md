@@ -2,6 +2,8 @@
 
 Чернетки для Play Console. Скріншоти знімаються вручну на телефоні.
 
+Редакція 16 жовтня 2026: тексти оновлено під 1.14.0 (ZIP, ID3/CUE, нічний таймер, закладка зі шторки, пошук, великий шрифт); скріншоти — нові, у `screenshots/v1.14-en` і `v1.14-uk`.
+
 Редакція 12 жовтня 2026: за порадами звіту Testers Community (лист від 1 жовтня) —
 ключові слова в описі, список можливостей, головні сценарії в першому абзаці.
 Що з того звіту взято, а що відхилено свідомо — у розділі «Поради тестування» внизу.
@@ -28,18 +30,21 @@
 BookVoices — **плеєр аудіокниг для вашої власної колекції**. Додайте теку з mp3, m4b, ogg чи flac — і слухайте з того місця, де зупинилися. Без акаунта, без реклами, без підписки; файли лишаються на вашому телефоні.
 
 **Слухання**
-• Формати mp3, m4b, ogg, flac, opus; глави m4b і вкладені теки CD1/CD2
+• Формати mp3, m4b, ogg, flac, opus; глави з m4b, ID3 і CUE та вкладені теки CD1/CD2
 • Продовження з того ж місця, розумне відмотування після паузи
 • Швидкість відтворення, перемотування, жести кнопки гарнітури (за бажанням)
-• Таймер сну: хвилини, до кінця глави чи книги, струсіть, щоб продовжити
-• Закладки, нотатки та пошук по них
+• Таймер сну: хвилини, до кінця глави чи книги, струсіть, щоб продовжити; нічний таймер за розкладом вмикається сам
+• Закладка одним дотиком зі шторки сповіщень; нотатки до закладок і пошук по них
+• Продовження після повернення навушників (за бажанням)
 • Черга «далі» для кількох книг поспіль
 • Фонове відтворення, віджет на головному екрані, керування зі шторки й екрана блокування
 
 **Бібліотека**
 • Полиця з обкладинками, пошуком, тегами, серіями та закріпленням улюблених
 • Сітка або компактний список — зручно навіть для сотні книг
+• Імпорт теки, окремих файлів чи ZIP-архіву з аудіокнигою
 • Розпізнавання «Автор — Назва» з імен тек, екран автора
+• Швидкий пошук за кількома словами: незалежно від регістру, діакритики й апострофів
 • Автоматично додає нові книги з вказаних вами тек
 • Позначає книги, чиї файли зникли
 
@@ -50,6 +55,7 @@ BookVoices — **плеєр аудіокниг для вашої власної 
 
 **Зручність**
 • Теми «Ніч», «Папір» і справжній чорний OLED
+• Великий шрифт і планшети: інтерфейс не ламається
 • 7 мов інтерфейсу: українська, English, Polski, Deutsch, Español, Français, Português (Brasil)
 
 **Приватність.** Жодної аналітики, трекерів і реєстрації. Застосунок працює без мережі; мережа потрібна лише якщо ви самі ввімкнете резервну копію WebDAV.
@@ -63,18 +69,21 @@ BookVoices не продає і не стримить книги: він гра�
 BookVoices is an **audiobook player for your own collection**. Add a folder of mp3, m4b, ogg or flac files and pick up exactly where you left off. No account, no ads, no subscription; your files stay on your phone.
 
 **Listening**
-• mp3, m4b, ogg, flac and opus; m4b chapters and nested CD1/CD2 folders
+• mp3, m4b, ogg, flac and opus; chapters from m4b, ID3 and CUE, and nested CD1/CD2 folders
 • Resume where you stopped, smart rewind after a pause
 • Playback speed, skip controls, optional headset button gestures
-• Sleep timer: minutes, end of chapter or book, shake to extend
-• Bookmarks, notes, and search across them
+• Sleep timer: minutes, end of chapter or book, shake to extend; a night schedule starts it for you
+• One-tap bookmark from the notification shade; notes on bookmarks and search across them
+• Resume after your headphones reconnect (optional)
 • Up Next queue for back-to-back books
 • Background playback, home-screen widget, lock-screen and notification controls
 
 **Library**
 • Shelf with covers, search, tags, series and pinned favorites
 • Grid or compact list view, comfortable even with a hundred books
+• Import a folder, single files or a ZIP archive with an audiobook
 • Parses "Author - Title" from folder names, with an author screen
+• Fast multi-word search that ignores case, diacritics and apostrophes
 • Automatically picks up new books from folders you choose
 • Flags books whose files went missing
 
@@ -85,6 +94,7 @@ BookVoices is an **audiobook player for your own collection**. Add a folder of m
 
 **Comfort**
 • Night, Paper and true-black OLED themes
+• Large-font and tablet friendly layouts
 • 7 interface languages: English, Українська, Polski, Deutsch, Español, Français, Português (Brasil)
 
 **Privacy.** No analytics, no trackers, no sign-up. The app works offline; the network is used only if you turn on WebDAV backup yourself.
@@ -145,3 +155,28 @@ Books & Reference (або Music & Audio)
   не малюються (див. `TESTING.md`). Додати згадку, коли перевіримо.
 - **Wear OS** — не перевірено на годиннику.
 - Ціни Pro в тексті немає: її показує Play, і вона залежить від країни.
+
+## Під 1.16.0 (чернетка, не опубліковано)
+
+Готові повні тексти під 1.16.0 усіма 7 мовами (en-US, uk і нові pl, de, es, fr, pt-BR) разом із
+«Що нового» — [`listing-1.16-all-languages.md`](listing-1.16-all-languages.md); довжини перевіряє
+`check-listing-lengths.py`.
+
+Підготовлено 8 листопада 2026. Вносити в Console лише разом із випуском 1.16.0 (див.
+[`release-notes-1.16.0.md`](release-notes-1.16.0.md)): поки він не вийшов, опис має відповідати 1.14.0.
+
+Чинний опис лишається, зміни такі (рядки замінюють однойменні в розділах «Бібліотека» та «Статистика й дані»):
+
+**UK**
+- «Резервна копія прогресу в JSON або на ваш сервер WebDAV» → «Резервна копія прогресу в JSON або на ваш сервер WebDAV; синхронізація між телефоном і планшетом без дублікатів книг»
+- «Експорт каталогу й закладок у Markdown» → «Експорт каталогу, закладок і конспекту окремої книги в Markdown»
+- «Імпорт теки, окремих файлів чи ZIP-архіву з аудіокнигою» → «Імпорт теки, окремих файлів чи ZIP-архіву (його можна відкрити просто з файлового менеджера); власна обкладинка»
+
+**EN**
+- "Progress backup to JSON or to your own WebDAV server" → "Progress backup to JSON or to your own WebDAV server; sync between phone and tablet without duplicate books"
+- "Export your catalog and bookmarks as Markdown" → "Export your catalog, bookmarks and a per-book summary as Markdown"
+- "Import a folder, single files or a ZIP archive with an audiobook" → "Import a folder, single files or a ZIP archive (open it straight from your file manager); set your own cover"
+
+Рахунок символів: повний опис ≤ 4000 (зараз із запасом). Згадку про Android Auto й далі не додавати, поки він не
+перевірений у машині; а в «Що нового» наступного випуску не писати «обкладинки в Android Auto» (у 1.14.0 так
+написано, хоча сітка обкладинок в Auto не малюється).

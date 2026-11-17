@@ -1,0 +1,7 @@
+• Daily automatic backup to a folder you choose (keeps the last 7)
+• Rename chapters or number them after confirming; names sync over WebDAV
+• Save a backup, listening history or the catalog straight to a file
+• Listening streak, a daily goal and CSV export of your history
+• A–B repeat in the player
+• "Report a problem" prepares an email with a diagnostic log; nothing is sent by itself
+• First build without Google Play Billing: all Pro features unlocked

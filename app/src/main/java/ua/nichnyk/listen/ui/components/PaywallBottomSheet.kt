@@ -22,6 +22,7 @@ import androidx.compose.material.icons.outlined.Equalizer
 import androidx.compose.material.icons.outlined.BluetoothAudio
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.Repeat
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -131,6 +132,7 @@ fun PaywallBottomSheet(
                     BenefitRow(Icons.Outlined.Tune, stringResource(R.string.pro_benefit_pitch))
                     BenefitRow(Icons.Outlined.BluetoothAudio, stringResource(R.string.pro_benefit_bluetooth))
                     BenefitRow(Icons.Outlined.Person, stringResource(R.string.pro_benefit_characters))
+                    BenefitRow(Icons.Outlined.Repeat, stringResource(R.string.pro_benefit_ab_repeat))
                 }
             }
 

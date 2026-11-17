@@ -37,6 +37,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.Modifier
@@ -188,6 +190,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun handleIncoming(intent: Intent?, container: AppContainer) {
+        // Ярлик «Продовжити …»: застосунок відкривається, книга грає з місця зупинки.
+        ua.nichnyk.listen.ui.quick.QuickAccess.bookIdFrom(intent)?.let { bookId ->
+            ua.nichnyk.listen.ui.quick.QuickAccess.reportResumeUsed(this)
+            container.player.resumeBook(bookId)
+            return
+        }
         val uris = collectIncomingUris(intent)
         if (uris.isNotEmpty()) container.offerImport(uris)
     }
@@ -356,7 +364,14 @@ private fun ListenAppRoot(container: AppContainer) {
                         tabs.forEach { tab ->
                             val title = stringResource(tab.labelRes)
                             NavigationBarItem(
-                                modifier = Modifier.testTag("tab_${tab.route}"),
+                                // Назва — на самій вкладці. Material3 стирає семантику іконки, коли є
+                                // підпис, а підпис на телефоні віддавався службам доступності з нульовими
+                                // межами (uiautomator, 8 листопада 2026): TalkBack пропускає невидимі вузли
+                                // й озвучував лише «вкладка, 1 з 3». Підпис нижче з дерева прибрано, щоб
+                                // там, де він видимий, назва не звучала двічі.
+                                modifier = Modifier
+                                    .testTag("tab_${tab.route}")
+                                    .semantics { contentDescription = title },
                                 selected = route == tab.route,
                                 onClick = {
                                     nav.navigate(tab.route) {
@@ -365,12 +380,13 @@ private fun ListenAppRoot(container: AppContainer) {
                                         restoreState = true
                                     }
                                 },
-                                icon = { androidx.compose.material3.Icon(tab.icon, contentDescription = title) },
+                                icon = { androidx.compose.material3.Icon(tab.icon, contentDescription = null) },
                                 // Підпис завжди в один рядок: при великому шрифті «Bookmarks» інакше
                                 // ламалося на «Bookmark / s».
                                 label = {
                                     Text(
                                         title,
+                                        modifier = Modifier.clearAndSetSemantics {},
                                         maxLines = 1,
                                         autoSize = androidx.compose.foundation.text.TextAutoSize.StepBased(
                                             minFontSize = 9.sp,
@@ -435,7 +451,7 @@ private fun ListenAppRoot(container: AppContainer) {
                     factory = object : ViewModelProvider.Factory {
                         @Suppress("UNCHECKED_CAST")
                         override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                            ua.nichnyk.listen.ui.screens.HistoryViewModel(container.repo, container.player) as T
+                            ua.nichnyk.listen.ui.screens.HistoryViewModel(container.repo, container.player, container.prefs) as T
                     },
                 )
                 ua.nichnyk.listen.ui.screens.HistoryScreen(

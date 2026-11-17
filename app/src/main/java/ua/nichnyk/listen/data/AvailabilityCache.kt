@@ -20,30 +20,40 @@ class AvailabilityCache(
     private val ttlMs: Long = DEFAULT_TTL_MS,
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
-    private class Entry(val uris: Set<String>, val gone: Set<String>, val atMs: Long)
+    private class Entry(val gone: Set<String>, val atMs: Long)
 
-    @Volatile
-    private var last: Entry? = null
+    /**
+     * Невеликий LRU за набором файлів: сервіс Auto питає про різні набори (уся
+     * полиця, окремий автор, одна книга), і з єдиним записом вони викидали один
+     * одного з кешу при кожному кроці по дереву.
+     */
+    private val entries = object : LinkedHashMap<Set<String>, Entry>(MAX_ENTRIES, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Set<String>, Entry>?): Boolean =
+            size > MAX_ENTRIES
+    }
 
     /** Ті з [uris], що не відкриваються. */
     suspend fun inaccessible(uris: Collection<String>): Set<String> {
         val key = uris.toSet()
-        val cached = last
-        if (cached != null && cached.uris == key && clock() - cached.atMs < ttlMs) {
+        val cached = synchronized(entries) { entries[key] }
+        if (cached != null && clock() - cached.atMs < ttlMs) {
             return cached.gone
         }
         val gone = probe(key)
-        last = Entry(key, gone, clock())
+        synchronized(entries) { entries[key] = Entry(gone, clock()) }
         return gone
     }
 
     /** Забути результат: після перепривʼязки книги стара відповідь уже неправдива. */
     fun invalidate() {
-        last = null
+        synchronized(entries) { entries.clear() }
     }
 
     companion object {
         const val DEFAULT_TTL_MS = 60_000L
+
+        /** Скільки різних наборів файлів тримаємо одночасно. */
+        const val MAX_ENTRIES = 8
     }
 }
 

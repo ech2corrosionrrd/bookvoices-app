@@ -5,6 +5,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import java.io.File
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -153,6 +154,20 @@ class ShelfLifecycleTest {
             "детектив",
             vm.selectedTag.value,
         )
+    }
+
+    /**
+     * «Полиця порожня» — лише після відповіді бази. До неї `books` теж порожній
+     * (початкове значення stateIn), і екран блимав порожнім станом одразу після
+     * оновлення застосунку.
+     */
+    @Test
+    fun emptyShelfIsKnownOnlyAfterDatabaseAnswered() = runTest(scheduler) {
+        org.junit.Assert.assertFalse("база ще не відповідала", vm.booksLoaded.value)
+        backgroundScope.launch { vm.booksLoaded.collect {} }
+        advanceUntilIdle()
+        org.junit.Assert.assertTrue("порожня база — теж відповідь", vm.booksLoaded.value)
+        org.junit.Assert.assertTrue(vm.books.value.isEmpty())
     }
 
     /** Книга з мітками — «паливо» для `allTags`, більше від неї нічого не треба. */

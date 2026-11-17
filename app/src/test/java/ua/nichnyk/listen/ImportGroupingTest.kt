@@ -10,6 +10,7 @@ import ua.nichnyk.listen.data.AudioImporter.Companion.groupKey
 import ua.nichnyk.listen.data.AudioImporter.Companion.isDiscFolder
 import ua.nichnyk.listen.data.AudioImporter.Companion.isJunkName
 import ua.nichnyk.listen.data.AudioImporter.Companion.isJunkPath
+import ua.nichnyk.listen.data.AudioImporter.Companion.soleBookAncestors
 
 /**
  * Розкладання вмісту обраної теки по книгах.
@@ -305,5 +306,31 @@ class ImportGroupingTest {
         assertTrue(isDiscFolder("12"))
         assertFalse(isDiscFolder("1984"))
         assertFalse(isDiscFolder("Джордж Орвелл"))
+    }
+
+    @Test
+    fun libraryRootAndForeignFoldersDoNotLendCovers() {
+        // Випадок із телефона 8 листопада 2026: «Книги» на 31 книгу, поруч тека
+        // статистики іншого плеєра з картинками-обкладинками чужих книг. Книга без
+        // своєї обкладинки отримувала першу з них.
+        val audio = listOf(
+            "Нивен - Мир Кольцо/01.mp3",
+            "Михайлов - Бульквариус/01.mp3",
+        )
+        val folders = findBookFolders(audio)
+        assertEquals(emptyList<String>(), soleBookAncestors("Нивен - Мир Кольцо", folders))
+        // Картинка з теки без аудіо не належить жодній книзі.
+        assertEquals("", groupKey("!Smart AudioBook Player Statistics/Михайлов.jpg", folders))
+    }
+
+    @Test
+    fun singleBookUnderAuthorStillBorrowsAuthorCover() {
+        val folders = findBookFolders(listOf("Автор/Назва/01.mp3"))
+        assertEquals(listOf("Автор", ""), soleBookAncestors("Автор/Назва", folders))
+        // Дві книги під автором — обкладинка автора вже нічия.
+        val two = findBookFolders(listOf("Автор/Місто/01.mp3", "Автор/Драма/01.mp3"))
+        assertEquals(emptyList<String>(), soleBookAncestors("Автор/Місто", two))
+        // Корінь-книга нічого не позичає.
+        assertEquals(emptyList<String>(), soleBookAncestors("", setOf("")))
     }
 }

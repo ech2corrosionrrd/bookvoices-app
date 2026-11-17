@@ -96,6 +96,9 @@ jobs:
       - name: Bundle (AAB)
         run: ./gradlew :app:bundleRelease --no-daemon
 
+      - name: FOSS build (R8, without Play Billing)
+        run: ./gradlew :app:assembleRelease -Pfoss=true --no-daemon
+
       - name: Звіти
         if: always()
         uses: actions/upload-artifact@v7

@@ -13,6 +13,13 @@ val releaseKeystore: Properties? = rootProject.file("keystore.properties")
     .takeIf { it.exists() }
     ?.let { file -> Properties().apply { file.inputStream().use { load(it) } } }
 
+// FOSS-збірка без пропрієтарних бібліотек Google Play (`-Pfoss=true`, для F-Droid / IzzyOnDroid).
+// За замовчуванням збирається звичайний варіант для Google Play, без зміни імен Gradle-задач.
+val isFossBuild: Boolean = providers.gradleProperty("foss")
+    .map { it.equals("true", ignoreCase = true) }
+    .orElse(false)
+    .get()
+
 android {
     namespace = "ua.nichnyk.listen"
     compileSdk = 37
@@ -28,6 +35,7 @@ android {
         versionName = rootProject.extra["appVersionName"] as String
         vectorDrawables.useSupportLibrary = true
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField("boolean", "IS_FOSS", isFossBuild.toString())
     }
 
     signingConfigs {
@@ -60,6 +68,11 @@ android {
         }
         // debug свідомо використовує стандартний debug-keystore Android SDK,
         // щоб релізний ключ ніколи не потрапляв у тестові збірки.
+        // Суфікс — щоб debug ставав поряд із версією з Play, а не вимагав її
+        // видалити (інший підпис) разом із полицею, прогресом і Pro власника.
+        debug {
+            applicationIdSuffix = ".debug"
+        }
     }
 
     compileOptions {
@@ -108,6 +121,7 @@ ksp {
 
 // Схеми Room — вхідні дані для androidTest міграцій.
 android.sourceSets.getByName("androidTest").assets.srcDir("$projectDir/schemas")
+android.sourceSets.getByName("main").kotlin.directories.add(if (isFossBuild) "src/foss/java" else "src/play/java")
 
 dependencies {
     implementation(platform(libs.compose.bom))
@@ -140,7 +154,9 @@ dependencies {
     implementation(libs.androidx.concurrent.futures.ktx)
     implementation(libs.androidx.documentfile)
     implementation(libs.androidx.work.runtime.ktx)
-    implementation(libs.play.billing.ktx)
+    if (!isFossBuild) {
+        implementation(libs.play.billing.ktx)
+    }
 
     // Ставить згенерований baseline-профіль на пристрій. Поза Google Play це єдиний
     // спосіб, яким профіль узагалі потрапляє в ART.
@@ -157,6 +173,8 @@ dependencies {
     testImplementation(libs.androidx.test.core)
     testImplementation(libs.androidx.arch.core.testing)
     testImplementation(libs.room.testing)
+    // WorkManagerTestInitHelper: перевіряємо, що планувальник WebDAV справді ставить і скасовує роботи.
+    testImplementation(libs.androidx.work.testing)
 
     androidTestImplementation(libs.androidx.test.junit)
     androidTestImplementation(libs.androidx.test.core)

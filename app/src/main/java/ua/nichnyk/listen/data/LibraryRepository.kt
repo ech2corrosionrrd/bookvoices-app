@@ -1,5 +1,6 @@
 package ua.nichnyk.listen.data
 
+import ua.nichnyk.listen.forAppLocale
 import android.content.Context
 import androidx.room.withTransaction
 import android.net.Uri
@@ -79,7 +80,7 @@ class LibraryRepository(
                 val book = byId[mark.bookId]
                 BookmarkWithBook(
                     mark,
-                    book?.book?.title ?: context.getString(R.string.unknown_book),
+                    book?.book?.title ?: context.forAppLocale().getString(R.string.unknown_book),
                     book?.book?.coverPath,
                 )
             }
@@ -137,6 +138,32 @@ class LibraryRepository(
     }
 
     fun takeLibraryRootPermission(uri: Uri): Boolean = importer.takeTreePermission(uri)
+
+    /** Чи посилається хоча б одна книга на полиці на цю теку (як джерело або в URI глав). */
+    suspend fun isSourceTreeUsed(treeUri: String): Boolean {
+        if (treeUri.isBlank()) return false
+        return dao.getAllBooks().any { item ->
+            item.book.sourceTreeUri == treeUri || item.chapters.any { it.uri.startsWith(treeUri) }
+        }
+    }
+
+    /** Звільняє постійний дозвіл на читання головної папки, якщо на неї більше ніщо не спирається. */
+    suspend fun releaseLibraryRootPermission(uri: String, keepForAutoBackup: Boolean = false) {
+        if (uri.isBlank() || keepForAutoBackup || isSourceTreeUsed(uri)) return
+        runCatching {
+            context.contentResolver.releasePersistableUriPermission(
+                uri.toUri(),
+                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION,
+            )
+        }
+    }
+
+    /** Звільняє дозвіл на попередню теку автокопії, зберігаючи читання, якщо воно потрібне книгам. */
+    suspend fun releaseAutoBackupPermission(treeUri: String, libraryRootUris: List<String>) {
+        if (treeUri.isBlank()) return
+        val keepRead = treeUri in libraryRootUris || isSourceTreeUsed(treeUri)
+        FolderBackup.releasePermission(context, treeUri, keepRead = keepRead)
+    }
 
     /** Чи лишається чинним хоча б один tree grant із списку головних папок. */
     fun anyLibraryRootGranted(rootUris: List<String>): Boolean =
@@ -374,8 +401,8 @@ class LibraryRepository(
 
     suspend fun importDemo(): ImportOutcome {
         val track = demo.createSpokenOrTone()
-        val title = context.getString(R.string.demo_book_title)
-        val author = context.getString(R.string.demo_book_author)
+        val title = context.forAppLocale().getString(R.string.demo_book_title)
+        val author = context.forAppLocale().getString(R.string.demo_book_author)
         val existing = findDuplicate(
             title = title,
             chapterTitles = listOf(track.title),
@@ -394,22 +421,25 @@ class LibraryRepository(
             uri = track.file.toUri().toString(),
             durationMs = duration,
         )
-        dao.upsertBook(
-            BookEntity(
-                id = id,
-                title = title,
-                author = author,
-                coverPath = cover,
-                addedAt = System.currentTimeMillis(),
-                lastPlayedAt = null,
-                durationMs = duration,
-                positionMs = 0,
-                currentChapterIndex = 0,
-                playbackSpeed = 1f,
-                completed = false,
+        // Одна транзакція: збій між записами не лишить книгу без глав.
+        db.withTransaction {
+            dao.upsertBook(
+                BookEntity(
+                    id = id,
+                    title = title,
+                    author = author,
+                    coverPath = cover,
+                    addedAt = System.currentTimeMillis(),
+                    lastPlayedAt = null,
+                    durationMs = duration,
+                    positionMs = 0,
+                    currentChapterIndex = 0,
+                    playbackSpeed = 1f,
+                    completed = false,
+                )
             )
-        )
-        dao.upsertChapters(listOf(chapter))
+            dao.upsertChapters(listOf(chapter))
+        }
         return ImportOutcome(listOf(PendingRename(id, title, author)), emptyList())
     }
 
@@ -474,6 +504,21 @@ class LibraryRepository(
         DuplicateDetector.findIn(dao.getAllBooks(), title, chapterTitles, durations, uris)
 
     /**
+     * Нові назви глав (id глави → назва). Порожні й незмінні відкидаються.
+     * Мітка `renamedAt` книги оновлюється — за нею синхронізація переносить назви на інші пристрої.
+     * @return старі назви змінених глав; порожньо, якщо нічого не змінилось.
+     */
+    suspend fun renameChapters(bookId: String, titles: Map<String, String>): Map<String, String> {
+        val book = dao.getBook(bookId) ?: return emptyMap()
+        val cleaned = titles.mapNotNull { (id, t) -> ChapterNaming.clean(t)?.let { id to it } }.toMap()
+        val changes = ChapterNaming.changes(book.chapters, cleaned)
+        if (changes.isEmpty()) return emptyMap()
+        val previous = book.chapters.filter { it.id in changes }.associate { it.id to it.title }
+        dao.renameChapters(bookId, changes)
+        return previous
+    }
+
+    /**
      * Перейменування разом із перемальовуванням згенерованої обкладинки.
      *
      * Раніше оновлювався лише текст у БД: книга «Кобзар», перейменована на «Гайдамаки»,
@@ -502,6 +547,47 @@ class LibraryRepository(
             // арбітраж проти пристрою, де перейменування було справжнім.
             renamedAt = if (changed) System.currentTimeMillis() else book.renamedAt,
         )
+    }
+
+    /**
+     * Замінює обкладинку книги на обране користувачем зображення.
+     * Попередній файл обкладинки прибирається, якщо на нього не посилається інша книга.
+     */
+    suspend fun updateBookCover(bookId: String, imageUri: Uri): Boolean = withContext(Dispatchers.IO) {
+        val bytes = runCatching {
+            context.contentResolver.openInputStream(imageUri)?.use { stream ->
+                val out = java.io.ByteArrayOutputStream()
+                val buf = ByteArray(16 * 1024)
+                var total = 0
+                while (true) {
+                    val n = stream.read(buf)
+                    if (n < 0) break
+                    total += n
+                    if (total > ZipBookExtractor.MAX_COVER_BYTES) return@use null
+                    out.write(buf, 0, n)
+                }
+                out.toByteArray()
+            }
+        }.getOrNull() ?: return@withContext false
+        updateBookCoverBytes(bookId, bytes)
+    }
+
+    suspend fun updateBookCoverBytes(bookId: String, bytes: ByteArray): Boolean = withContext(Dispatchers.IO) {
+        val current = dao.getBook(bookId) ?: return@withContext false
+        val newCover = covers.fromCustomImage(bookId, bytes) ?: return@withContext false
+        val oldCover = current.book.coverPath
+        dao.updateIdentity(
+            bookId = bookId,
+            title = current.book.title,
+            author = current.book.author,
+            coverPath = newCover,
+            renamedAt = current.book.renamedAt,
+        )
+        if (oldCover != null && oldCover != newCover) {
+            val stillUsed = dao.getAllBooks().any { it.book.id != bookId && it.book.coverPath == oldCover }
+            if (!stillUsed) covers.delete(oldCover)
+        }
+        true
     }
 
     /**
@@ -701,7 +787,7 @@ class LibraryRepository(
             // Надгробок їде в бекап, інакше книга повернеться з хмари наступним злиттям.
             dao.upsertTombstone(DeletedBookEntity(id, System.currentTimeMillis()))
         }
-        releaseBookFiles(current)
+        releaseBookFiles(current, dao.getAllBooks())
         pruneTombstones()
     }
 
@@ -712,24 +798,52 @@ class LibraryRepository(
      * транзакції Room, а туди це не можна: [android.content.ContentResolver] і
      * файлова система — робота поза базою, і виконавець транзакції на ній зупиняється.
      * Тому при злитті база змінюється в транзакції, а сюди приходить уже після коміту.
+     *
+     * Файли, обкладинки та дозволи звільняються лише тоді, коли на них більше не
+     * посилається жодна книга з [remaining] (спільний файл або відновлення полиці).
      */
-    private fun releaseBookFiles(current: BookWithChapters?) {
+    private fun releaseBookFiles(
+        current: BookWithChapters?,
+        remaining: List<BookWithChapters> = emptyList(),
+    ) {
+        if (current == null) return
+        releaseBooksFiles(listOf(current), remaining)
+    }
+
+    private fun releaseBooksFiles(
+        removed: List<BookWithChapters>,
+        remaining: List<BookWithChapters>,
+    ) {
+        if (removed.isEmpty()) return
+        val keptUris = remaining.asSequence()
+            .flatMap { it.chapters.asSequence() }
+            .mapTo(mutableSetOf()) { it.uri }
+        val keptCovers = remaining.mapNotNullTo(mutableSetOf()) { it.book.coverPath }
+
         // distinct(): у m4b усі глави посилаються на один файл.
-        current?.chapters?.map { it.uri }?.distinct()?.forEach { uriStr ->
-            runCatching {
-                val uri = uriStr.toUri()
-                when (uri.scheme) {
-                    "content" -> context.contentResolver.releasePersistableUriPermission(
-                        uri,
-                        android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION,
-                    )
-                    // Файли, які імпорт скопіював до себе (filesDir/imports, filesDir/demo),
-                    // раніше лишалися назавжди — сховище повільно забивалося.
-                    "file" -> uri.path?.let { path -> deleteIfOwnCopy(java.io.File(path)) }
+        removed.asSequence()
+            .flatMap { it.chapters.asSequence() }
+            .map { it.uri }
+            .distinct()
+            .filter { it !in keptUris }
+            .forEach { uriStr ->
+                runCatching {
+                    val uri = uriStr.toUri()
+                    when (uri.scheme) {
+                        "content" -> context.contentResolver.releasePersistableUriPermission(
+                            uri,
+                            android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                        )
+                        // Файли, які імпорт скопіював до себе (filesDir/imports, filesDir/demo),
+                        // раніше лишалися назавжди — сховище повільно забивалося.
+                        "file" -> uri.path?.let { path -> deleteIfOwnCopy(java.io.File(path)) }
+                    }
                 }
             }
-        }
-        covers.delete(current?.book?.coverPath)
+        removed.mapNotNull { it.book.coverPath }
+            .distinct()
+            .filter { it !in keptCovers }
+            .forEach { covers.delete(it) }
     }
 
     /** Надгробки старші за TOMBSTONE_TTL_DAYS уже нікому нічого не повідомляють. */
@@ -850,8 +964,8 @@ class LibraryRepository(
     }
 
     private fun fallbacks() = BackupCodec.Fallbacks(
-        unknownAuthor = context.getString(R.string.unknown_author),
-        chapterTitle = { n -> context.getString(R.string.chapter_number, n) },
+        unknownAuthor = context.forAppLocale().getString(R.string.unknown_author),
+        chapterTitle = { n -> context.forAppLocale().getString(R.string.chapter_number, n) },
     )
 
     suspend fun exportBackupJson(): String = withContext(Dispatchers.IO) {
@@ -889,6 +1003,7 @@ class LibraryRepository(
         // replaceAll стирає книги, і queue_items порожніє за ним через CASCADE:
         // список «далі» зникав після кожного відновлення, навіть коли всі його
         // книги в файлі були. Запамʼятовуємо порядок і повертаємо тих, хто вижив.
+        val booksBefore = runCatching { dao.getAllBooks() }.getOrDefault(emptyList())
         val queueBefore = runCatching { dao.getQueue().map { it.book.id } }.getOrDefault(emptyList())
         // Плеєр зупиняємо лише після успішного розбору: раніше зіпсований файл
         // все одно збивав відтворення, хоча полиця лишалася незмінною.
@@ -910,6 +1025,7 @@ class LibraryRepository(
                 )
                 val survived = payload.books.mapTo(mutableSetOf()) { it.id }
                 dao.replaceQueue(queueBefore.filter { it in survived })
+                releaseBooksFiles(booksBefore, dao.getAllBooks())
                 true
             }.getOrDefault(false)
         }
@@ -940,6 +1056,7 @@ class LibraryRepository(
         // Книги, які прибрали чужі надгробки. Читається лише після успішного коміту:
         // при відкоті список може бути заповнений, але жодного рядка не видалено.
         var removedByCloud: List<BookWithChapters> = emptyList()
+        val coverRedraws = mutableListOf<Triple<String, String, String>>()
 
         val merged = runCatching {
             db.withTransaction {
@@ -968,28 +1085,79 @@ class LibraryRepository(
 
                 // 2. Що видалено тут — те не повертаємо, навіть якщо воно ще є в бекапі.
                 val deletedHere = dao.getAllTombstones().associate { it.id to it.deletedAt }
+                val incomingBookIds = payload.books.mapTo(mutableSetOf()) { it.id }
+                val unmatchedLocalBooks = dao.getAllBooks()
+                    .filterNot { it.book.id in incomingBookIds }
+                    .toMutableList()
+                // Якщо ту саму книгу імпортували на двох пристроях окремо, у неї різні UUID і
+                // різні локальні URI, але однакова назва й відбиток глав. Зливаємо прогрес,
+                // закладки, мітки й персонажів у наявну локальну книгу замість створення
+                // дубліката з чужими недоступними адресами файлів.
+                val remappedBookIds = mutableMapOf<String, String>()
+                val remappedChapterIds = mutableMapOf<String, String>()
 
                 for (incoming in payload.books) {
                     val stone = deletedHere[incoming.id]
                     if (stone != null && (incoming.lastPlayedAt ?: 0L) <= stone) continue
                     val existing = dao.getBook(incoming.id)
+                    val incomingChapters = chaptersByBook[incoming.id].orEmpty().sortedBy { it.index }
                     if (existing == null) {
-                        // Книгу слухали після нашого видалення — інший пристрій має рацію.
-                        if (stone != null) dao.deleteTombstone(incoming.id)
-                        dao.upsertBook(incoming)
-                        chaptersByBook[incoming.id]?.takeIf { it.isNotEmpty() }?.let { dao.upsertChapters(it) }
+                        val localDuplicate = if (incomingChapters.isNotEmpty()) {
+                            DuplicateDetector.findIn(
+                                books = unmatchedLocalBooks,
+                                title = incoming.title,
+                                chapterTitles = incomingChapters.map { it.title },
+                                durations = incomingChapters.map { it.durationMs },
+                                uris = incomingChapters.map { it.uri },
+                            )
+                        } else {
+                            null
+                        }
+                        if (localDuplicate != null) {
+                            unmatchedLocalBooks.remove(localDuplicate)
+                            val targetBookId = localDuplicate.book.id
+                            remappedBookIds[incoming.id] = targetBookId
+                            val localChaptersByIndex = localDuplicate.chapters.associateBy { it.index }
+                            for (ch in incomingChapters) {
+                                localChaptersByIndex[ch.index]?.let { localCh ->
+                                    remappedChapterIds[ch.id] = localCh.id
+                                }
+                            }
+                            if (stone != null) dao.deleteTombstone(incoming.id)
+                            mergeIdentityAndChapters(
+                                local = localDuplicate,
+                                incoming = incoming.copy(id = targetBookId),
+                                incomingChapters = incomingChapters,
+                                coverRedraws = coverRedraws,
+                            )
+                        } else {
+                            // Книгу слухали після нашого видалення — інший пристрій має рацію.
+                            if (stone != null) dao.deleteTombstone(incoming.id)
+                            dao.upsertBook(incoming)
+                            chaptersByBook[incoming.id]?.takeIf { it.isNotEmpty() }?.let { dao.upsertChapters(it) }
+                        }
                     } else {
-                        BackupCodec.mergeBook(existing.book, incoming)?.let { dao.updateBook(it) }
+                        mergeIdentityAndChapters(
+                            local = existing,
+                            incoming = incoming,
+                            incomingChapters = incomingChapters,
+                            coverRedraws = coverRedraws,
+                        )
                     }
                 }
                 // Книга могла щойно зникнути через надгробок: закладка без книги
                 // порушила б зовнішній ключ і зірвала б усе злиття.
-                val presentBooks = dao.getAllBooks().mapTo(mutableSetOf()) { it.book.id }
+                val allPresentBooks = dao.getAllBooks()
+                val presentBooks = allPresentBooks.mapTo(mutableSetOf()) { it.book.id }
+                val chapterTitlesById = allPresentBooks.asSequence()
+                    .flatMap { it.chapters.asSequence() }
+                    .associate { it.id to it.title }
                 // Надгробки закладок — та сама послідовність, що й для книг і
-                // персонажів: спершу застосувати чужі видалення, потім пропустити те,
+                // персонажів: спершу застосовуємо чужі видалення, потім пропустити те,
                 // що видалили тут. Без цього злиття вміло лише додавати, і стерта
                 // закладка поверталася з наступною синхронізацією.
-                for (stone in payload.bookmarkTombstones) {
+                for (rawStone in payload.bookmarkTombstones) {
+                    val stone = remappedBookIds[rawStone.bookId]?.let { rawStone.copy(bookId = it) } ?: rawStone
                     val local = dao.getBookmark(stone.id)
                     // createdAt — єдина мітка часу закладки: створена ПІСЛЯ видалення
                     // означає, що на іншому пристрої її додали заново під тим самим id.
@@ -1000,7 +1168,13 @@ class LibraryRepository(
                 }
                 val bookmarksDeletedHere = dao.getAllBookmarkTombstones().associate { it.id to it.deletedAt }
 
-                for (mark in payload.bookmarks) {
+                for (rawMark in payload.bookmarks) {
+                    val resolvedChapterId = remappedChapterIds[rawMark.chapterId] ?: rawMark.chapterId
+                    val mark = rawMark.copy(
+                        bookId = remappedBookIds[rawMark.bookId] ?: rawMark.bookId,
+                        chapterId = resolvedChapterId,
+                        chapterTitle = chapterTitlesById[resolvedChapterId] ?: rawMark.chapterTitle,
+                    )
                     if (mark.bookId !in presentBooks) continue
                     val stone = bookmarksDeletedHere[mark.id]
                     if (stone != null) {
@@ -1018,14 +1192,16 @@ class LibraryRepository(
                 // Надгробки міток. Арбітражу «додали заново» тут немає — у мітки
                 // немає власної мітки часу, вона і є пара (книга, слово). Надгробок
                 // знімає лише повторне ручне додавання, у LibraryRepository.addTag.
-                for (stone in payload.tagTombstones) {
+                for (rawStone in payload.tagTombstones) {
+                    val stone = remappedBookIds[rawStone.bookId]?.let { rawStone.copy(bookId = it) } ?: rawStone
                     dao.deleteTag(stone.bookId, stone.tag)
                     dao.upsertTagTombstone(stone)
                 }
                 val tagsDeletedHere = dao.getAllTagTombstones()
                     .mapTo(mutableSetOf()) { it.bookId to it.tag }
 
-                for (tag in payload.tags) {
+                for (rawTag in payload.tags) {
+                    val tag = remappedBookIds[rawTag.bookId]?.let { rawTag.copy(bookId = it) } ?: rawTag
                     if (tag.bookId !in presentBooks) continue
                     if ((tag.bookId to tag.tag) in tagsDeletedHere) continue
                     dao.insertTag(tag)
@@ -1039,7 +1215,8 @@ class LibraryRepository(
                 // застосовуємо чужі видалення, потім пропускаємо те, що видалили тут:
                 // без цього злиття вміло лише додавати, і прибраний персонаж
                 // повертався з наступною синхронізацією.
-                for (stone in payload.characterTombstones) {
+                for (rawStone in payload.characterTombstones) {
+                    val stone = remappedBookIds[rawStone.bookId]?.let { rawStone.copy(bookId = it) } ?: rawStone
                     val local = dao.getCharacter(stone.id)
                     if (local != null && BackupCodec.characterTombstoneWins(local, stone.deletedAt)) {
                         dao.deleteCharacter(stone.id)
@@ -1050,7 +1227,8 @@ class LibraryRepository(
                 }
 
                 val charactersDeletedHere = dao.getAllCharacterTombstones().associate { it.id to it.deletedAt }
-                for (character in payload.characters) {
+                for (rawCharacter in payload.characters) {
+                    val character = remappedBookIds[rawCharacter.bookId]?.let { rawCharacter.copy(bookId = it) } ?: rawCharacter
                     if (character.bookId !in presentBooks) continue
                     val stone = charactersDeletedHere[character.id]
                     if (stone != null) {
@@ -1061,7 +1239,8 @@ class LibraryRepository(
                     }
                     dao.upsertCharacter(character)
                 }
-                for (session in payload.sessions) {
+                for (rawSession in payload.sessions) {
+                    val session = remappedBookIds[rawSession.bookId]?.let { rawSession.copy(bookId = it) } ?: rawSession
                     dao.insertSession(session)
                 }
                 // Денна статистика: за кожну дату лишаємо більше з двох чисел.
@@ -1084,14 +1263,85 @@ class LibraryRepository(
 
         if (!merged) return@withContext false
 
+        for ((id, title, author) in coverRedraws) {
+            val fresh = dao.getBook(id) ?: continue
+            if (!covers.isGenerated(fresh.book.coverPath)) continue
+            val redrawn = runCatching { covers.generate(id, title, author) }.getOrNull() ?: continue
+            val old = fresh.book.coverPath
+            dao.updateBook(fresh.book.copy(coverPath = redrawn))
+            if (old != null && old != redrawn) covers.delete(old)
+        }
+
         // Тільки після коміту. Якщо транзакція відкотилася, книги на місці — і
         // файли з дозволами теж, тобто нічого не загублено й видалити їх можна
         // наступного разу.
-        for (book in removedByCloud) {
-            withContext(Dispatchers.Main) { onBookDeleted(book.book.id) }
-            releaseBookFiles(book)
+        if (removedByCloud.isNotEmpty()) {
+            val remaining = dao.getAllBooks()
+            for (book in removedByCloud) {
+                withContext(Dispatchers.Main) { onBookDeleted(book.book.id) }
+            }
+            releaseBooksFiles(removedByCloud, remaining)
         }
         true
+    }
+
+    /**
+     * Назви глав і поля книги разом.
+     *
+     * Якщо розділів різна кількість, новіші назви глав не куди класти. Мітку
+     * `renamedAt` тоді не просуваємо, доки не змінилися ще й назва чи автор:
+     * інакше наступний синк із уже однаковою кількістю розділів вважав би
+     * перейменування застосованим і ніколи б його не переніс.
+     * [coverRedraws] — згенеровані обкладинки, які треба перемалювати вже після коміту.
+     */
+    private suspend fun mergeIdentityAndChapters(
+        local: BookWithChapters,
+        incoming: BookEntity,
+        incomingChapters: List<ChapterEntity>,
+        coverRedraws: MutableList<Triple<String, String, String>>,
+    ) {
+        val stampBlocked = mergeChapterTitlesIfNewer(local, incoming, incomingChapters)
+        val incomingBook = if (
+            stampBlocked &&
+            incoming.title == local.book.title &&
+            incoming.author == local.book.author
+        ) {
+            incoming.copy(renamedAt = local.book.renamedAt)
+        } else {
+            incoming
+        }
+        val merged = BackupCodec.mergeBook(local.book, incomingBook) ?: return
+        dao.updateBook(merged)
+        if ((merged.title != local.book.title || merged.author != local.book.author) &&
+            covers.isGenerated(local.book.coverPath)
+        ) {
+            coverRedraws.add(Triple(merged.id, merged.title, merged.author))
+        }
+    }
+
+    /**
+     * Переносить новіші назви глав з іншого пристрою за їхнім номером, не чіпаючи
+     * локальних id, URI файлів і структури книги.
+     *
+     * @return true, якщо мітка новіша, але назви не перенесено через різну кількість розділів.
+     */
+    private suspend fun mergeChapterTitlesIfNewer(
+        local: BookWithChapters,
+        incoming: BookEntity,
+        incomingChapters: List<ChapterEntity>,
+    ): Boolean {
+        if (incoming.renamedAt <= local.book.renamedAt) return false
+        if (incomingChapters.size != local.chapters.size) return true
+        val incomingByIndex = incomingChapters.associateBy { it.index }
+        val wanted = local.chapters.mapNotNull { localCh ->
+            val remoteTitle = incomingByIndex[localCh.index]?.title?.let(ChapterNaming::clean) ?: return@mapNotNull null
+            localCh.id to remoteTitle
+        }.toMap()
+        val changes = ChapterNaming.changes(local.chapters, wanted)
+        if (changes.isNotEmpty()) {
+            dao.renameChapters(local.book.id, changes, renamedAt = incoming.renamedAt)
+        }
+        return false
     }
 
     suspend fun setPinned(bookId: String, pinned: Boolean) {
@@ -1179,39 +1429,46 @@ class LibraryRepository(
         val books = dao.getAllBooks().sortedWith(compareBy({ it.book.author }, { it.book.title }))
         val now = java.text.SimpleDateFormat("d MMMM yyyy, HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
         val sb = StringBuilder()
-        sb.appendLine("# ${context.getString(R.string.export_catalog_title)}")
-        sb.appendLine("${context.getString(R.string.export_catalog_exported_at, now)}\n")
+        sb.appendLine("# ${context.forAppLocale().getString(R.string.export_catalog_title)}")
+        sb.appendLine("${context.forAppLocale().getString(R.string.export_catalog_exported_at, now)}\n")
 
         val totalDurationMs = books.sumOf { it.book.durationMs }
         val totalHours = totalDurationMs / (1000 * 60 * 60)
         val totalMins = (totalDurationMs / (1000 * 60)) % 60
-        val durFormatted = if (totalHours > 0) "${totalHours} ${context.getString(R.string.unit_hours_short)} ${totalMins} ${context.getString(R.string.unit_minutes_short)}" else "${totalMins} ${context.getString(R.string.unit_minutes_short)}"
+        val durFormatted = if (totalHours > 0) "${totalHours} ${context.forAppLocale().getString(R.string.unit_hours_short)} ${totalMins} ${context.forAppLocale().getString(R.string.unit_minutes_short)}" else "${totalMins} ${context.forAppLocale().getString(R.string.unit_minutes_short)}"
 
-        sb.appendLine("- **${context.getString(R.string.export_catalog_total_books, books.size)}**")
-        sb.appendLine("- **${context.getString(R.string.export_catalog_total_duration, durFormatted)}**\n")
+        sb.appendLine("- **${context.forAppLocale().getString(R.string.export_catalog_total_books, books.size)}**")
+        sb.appendLine("- **${context.forAppLocale().getString(R.string.export_catalog_total_duration, durFormatted)}**\n")
         sb.appendLine("---")
         sb.appendLine()
 
         var currentAuthor = ""
         for (book in books) {
-            val author = book.book.author.ifBlank { context.getString(R.string.unknown_author) }
+            val author = book.book.author.ifBlank { context.forAppLocale().getString(R.string.unknown_author) }
             if (author != currentAuthor) {
                 currentAuthor = author
                 sb.appendLine("## $currentAuthor\n")
             }
             val progressPercent = (book.progress() * 100).toInt()
-            val status = if (book.book.completed) "✅ ${context.getString(R.string.filter_finished)}" else "🎧 $progressPercent%"
+            val status = if (book.book.completed) "✅ ${context.forAppLocale().getString(R.string.filter_finished)}" else "🎧 $progressPercent%"
             val seriesInfo = if (!book.book.series.isNullOrBlank()) {
                 val order = book.book.seriesOrder?.let { " #$it" }.orEmpty()
                 " [${book.book.series}$order]"
             } else ""
             val h = book.book.durationMs / (1000 * 60 * 60)
             val m = (book.book.durationMs / (1000 * 60)) % 60
-            val dur = if (h > 0) "${h} ${context.getString(R.string.unit_hours_short)} ${m} ${context.getString(R.string.unit_minutes_short)}" else "${m} ${context.getString(R.string.unit_minutes_short)}"
+            val dur = if (h > 0) "${h} ${context.forAppLocale().getString(R.string.unit_hours_short)} ${m} ${context.forAppLocale().getString(R.string.unit_minutes_short)}" else "${m} ${context.forAppLocale().getString(R.string.unit_minutes_short)}"
 
             sb.appendLine("- **${book.book.title}**$seriesInfo — $dur ($status)")
         }
         sb.toString()
+    }
+
+    suspend fun exportHistoryCsv(): String = withContext(Dispatchers.IO) {
+        ListeningStats.exportHistoryCsv(
+            sessions = dao.getAllSessions(),
+            daily = dao.getAllDailyListening(),
+        )
     }
 
     suspend fun exportBookmarksMarkdown(): String = withContext(Dispatchers.IO) {
@@ -1220,13 +1477,13 @@ class LibraryRepository(
         val now = java.text.SimpleDateFormat("d MMMM yyyy, HH:mm", java.util.Locale.getDefault())
             .format(java.util.Date())
         val sb = StringBuilder()
-        sb.appendLine("# ${context.getString(R.string.export_bookmarks_title)}")
-        sb.appendLine("${context.getString(R.string.export_catalog_exported_at, now)}\n")
+        sb.appendLine("# ${context.forAppLocale().getString(R.string.export_bookmarks_title)}")
+        sb.appendLine("${context.forAppLocale().getString(R.string.export_catalog_exported_at, now)}\n")
         if (bookmarks.isEmpty()) {
-            sb.appendLine(context.getString(R.string.no_bookmarks))
+            sb.appendLine(context.forAppLocale().getString(R.string.no_bookmarks))
             return@withContext sb.toString()
         }
-        sb.appendLine("- **${context.getString(R.string.export_bookmarks_total, bookmarks.size)}**\n")
+        sb.appendLine("- **${context.forAppLocale().getString(R.string.export_bookmarks_total, bookmarks.size)}**\n")
         sb.appendLine("---\n")
         val grouped = bookmarks.groupBy { it.bookId }
         for ((bookId, marks) in grouped) {
@@ -1243,6 +1500,71 @@ class LibraryRepository(
             sb.appendLine()
         }
         sb.toString()
+    }
+
+    /**
+     * Експортує повний конспект однієї книги в Markdown: метадані, прогрес,
+     * мітки, особисті нотатки, персонажів та закладки за порядком розділів.
+     */
+    suspend fun exportBookSummaryMarkdown(bookId: String): String? = withContext(Dispatchers.IO) {
+        val item = dao.getBook(bookId) ?: return@withContext null
+        val book = item.book
+        val tags = dao.getTagsForBook(bookId)
+        val characters = dao.getAllCharacters().filter { it.bookId == bookId }
+        val bookmarks = dao.getAllBookmarks().filter { it.bookId == bookId }
+        val chapterOrder = item.chapters.associate { it.id to it.index }
+
+        val sb = StringBuilder()
+        sb.appendLine("# ${book.title}")
+        val author = book.author.ifBlank { context.forAppLocale().getString(R.string.unknown_author) }
+        sb.appendLine("*$author*")
+        if (!book.series.isNullOrBlank()) {
+            val order = book.seriesOrder?.let {
+                val num = if (it % 1f == 0f) it.toInt().toString() else it.toString()
+                " #$num"
+            }.orEmpty()
+            sb.appendLine("${context.forAppLocale().getString(R.string.series)}: **${book.series}$order**")
+        }
+        val progressPercent = (item.progress() * 100).toInt()
+        val status = if (book.completed) "✅ ${context.forAppLocale().getString(R.string.filter_finished)}" else "🎧 $progressPercent%"
+        sb.appendLine("${context.forAppLocale().getString(R.string.author_stats_duration)}: ${book.durationMs.formatClock()} ($status)")
+        if (tags.isNotEmpty()) {
+            sb.appendLine(tags.joinToString(" ") { "#$it" })
+        }
+        sb.appendLine()
+
+        if (!book.notes.isNullOrBlank()) {
+            sb.appendLine("## ${context.forAppLocale().getString(R.string.book_notes_title)}")
+            sb.appendLine(book.notes.trim())
+            sb.appendLine()
+        }
+
+        if (characters.isNotEmpty()) {
+            sb.appendLine("## ${context.forAppLocale().getString(R.string.characters_title)}")
+            for (ch in characters) {
+                val rolePart = ch.role?.takeIf { it.isNotBlank() }?.let { " ($it)" }.orEmpty()
+                val descPart = ch.description?.takeIf { it.isNotBlank() }?.let { " — $it" }.orEmpty()
+                sb.appendLine("- **${ch.name}**$rolePart$descPart")
+            }
+            sb.appendLine()
+        }
+
+        if (bookmarks.isNotEmpty()) {
+            sb.appendLine("## ${context.forAppLocale().getString(R.string.bookmarks_title)}")
+            val sortedMarks = bookmarks.sortedWith(
+                compareBy<BookmarkEntity> { chapterOrder[it.chapterId] ?: Int.MAX_VALUE }
+                    .thenBy { it.positionMs }
+                    .thenBy { it.createdAt },
+            )
+            for (mark in sortedMarks) {
+                val chapterPart = mark.chapterTitle.ifBlank { context.forAppLocale().getString(R.string.chapter_word) }
+                val note = if (mark.note.isNotBlank()) " — «${mark.note}»" else ""
+                sb.appendLine("- **$chapterPart** (${mark.positionMs.formatClock()})$note")
+            }
+            sb.appendLine()
+        }
+
+        sb.toString().trimEnd() + "\n"
     }
     private companion object {
         /**

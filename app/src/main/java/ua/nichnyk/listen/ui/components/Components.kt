@@ -22,6 +22,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -140,39 +141,84 @@ object CoverCache {
      */
     fun trim(level: Int) {
         when {
-            level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW -> lru.evictAll()
+            level >= TRIM_LEVEL_RUNNING_LOW -> lru.evictAll()
             level >= android.content.ComponentCallbacks2.TRIM_MEMORY_BACKGROUND -> lru.trimToSize(lru.size() / 2)
         }
     }
 }
 
-private fun decodeCover(path: String): ImageBitmap? = runCatching {
+// Значення ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW (10). Саму константу прибрано
+// з платформи (з API 34 вона позначена застарілою), тож порівнюємо з числом:
+// `level >= 10` лишається коректним для всіх версій Android, де рівень існує.
+private const val TRIM_LEVEL_RUNNING_LOW = 10
+
+/** Найменша й найбільша цільова сторона декодованої обкладинки, px. */
+private const val COVER_MIN_PX = 128
+private const val COVER_MAX_PX = 1024
+
+/**
+ * Цільова сторона декодування: найближчий степінь двійки, не менший за розмір,
+ * у якому обкладинку малюють. Степені двійки тримають кількість різних ключів
+ * у кеші малою — одна обкладинка в списку й на екрані плеєра дають лише два записи.
+ */
+internal fun coverTargetPx(drawnPx: Int): Int {
+    var target = COVER_MIN_PX
+    while (target < drawnPx && target < COVER_MAX_PX) target *= 2
+    return target
+}
+
+/**
+ * Найбільший inSampleSize, за якого менша сторона результату не менша за [targetPx].
+ * ContentScale.Crop розтягує меншу сторону на рамку, тож саме вона обмежує різкість.
+ */
+internal fun coverSampleSize(width: Int, height: Int, targetPx: Int): Int {
+    val shortSide = min(width, height)
+    var sample = 1
+    while (shortSide / (sample * 2) >= targetPx) sample *= 2
+    return sample
+}
+
+private fun decodeCover(path: String, targetPx: Int): ImageBitmap? = runCatching {
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     BitmapFactory.decodeFile(path, bounds)
     if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@runCatching null
-    val sample = (min(bounds.outWidth, bounds.outHeight) / 400).coerceAtLeast(1)
-    val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+    val opts = BitmapFactory.Options().apply {
+        inSampleSize = coverSampleSize(bounds.outWidth, bounds.outHeight, targetPx)
+    }
     BitmapFactory.decodeFile(path, opts)?.asImageBitmap()
 }.getOrNull()
 
 @Composable
 fun BookCover(path: String?, modifier: Modifier = Modifier, corner: Dp = 10.dp) {
-    // Синхронний BitmapFactory під час композиції давав просадки кадрів при скролі полиці,
-    // тому декодуємо на IO і віддаємо результат через стан.
-    var bitmap by remember(path) { mutableStateOf(path?.let { CoverCache.lru.get(it) }) }
-    LaunchedEffect(path) {
-        if (path != null && bitmap == null) {
-            val decoded = withContext(Dispatchers.IO) { decodeCover(path) }
-            if (decoded != null) CoverCache.lru.put(path, decoded)
-            bitmap = decoded
-        }
-    }
-    Box(
+    BoxWithConstraints(
         modifier
             .clip(RoundedCornerShape(corner))
             .background(MaterialTheme.colorScheme.surfaceVariant),
         contentAlignment = Alignment.Center,
     ) {
+        // Розмір декодування береться з рамки, у яку малюють: обкладинка 48 dp
+        // у списку не тримає в пам'яті те, що потрібне для екрана плеєра.
+        // BoxWithConstraints, а не onSizeChanged: розмір відомий у першому ж
+        // кадрі, тож влучання в кеш не блимає заглушкою при скролі.
+        val drawnPx = remember(constraints) {
+            val w = if (constraints.hasBoundedWidth) constraints.maxWidth else 0
+            val h = if (constraints.hasBoundedHeight) constraints.maxHeight else 0
+            // Необмежена рамка (не трапляється в поточних екранах) — середній розмір,
+            // а не мінімальний: краще зайва пам'ять, ніж розмита обкладинка.
+            maxOf(w, h).takeIf { it > 0 } ?: 512
+        }
+        val targetPx = coverTargetPx(drawnPx)
+        val key = path?.let { "$it@$targetPx" }
+        // Синхронний BitmapFactory під час композиції давав просадки кадрів при скролі полиці,
+        // тому декодуємо на IO і віддаємо результат через стан.
+        var bitmap by remember(key) { mutableStateOf(key?.let { CoverCache.lru.get(it) }) }
+        LaunchedEffect(key) {
+            if (path != null && key != null && bitmap == null) {
+                val decoded = withContext(Dispatchers.IO) { decodeCover(path, targetPx) }
+                if (decoded != null) CoverCache.lru.put(key, decoded)
+                bitmap = decoded
+            }
+        }
         val bmp = bitmap
         if (bmp != null) {
             Image(bmp, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)

@@ -74,17 +74,20 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -137,6 +140,7 @@ fun LibraryScreen(
     // Див. SettingsScreen: ресурс читає composable, а не обробник події.
     val filePickerUnavailable = stringResource(R.string.file_picker_unavailable)
     val books by vm.books.collectAsStateWithLifecycle()
+    val booksLoaded by vm.booksLoaded.collectAsStateWithLifecycle()
     val query by vm.query.collectAsStateWithLifecycle()
     val isSearching by vm.isSearching.collectAsStateWithLifecycle()
     val filter by vm.filter.collectAsStateWithLifecycle()
@@ -156,9 +160,9 @@ fun LibraryScreen(
     val weeklyStats by vm.weeklyStats.collectAsStateWithLifecycle()
     val settings by vm.settings.collectAsStateWithLifecycle()
 
-    var addSheet by remember { mutableStateOf(false) }
-    var sortMenuOpen by remember { mutableStateOf(false) }
-    var seriesTagSheet by remember { mutableStateOf(false) }
+    var addSheet by rememberSaveable { mutableStateOf(false) }
+    var sortMenuOpen by rememberSaveable { mutableStateOf(false) }
+    var seriesTagSheet by rememberSaveable { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<BookWithChapters?>(null) }
     var goneBookTarget by remember { mutableStateOf<BookWithChapters?>(null) }
     // Книга, якій зараз обирають нову теку; rememberSaveable — бо вибір теки відкриває
@@ -169,8 +173,8 @@ fun LibraryScreen(
         relinkBookId = null
         if (uri != null && id != null) vm.relinkBook(id, uri)
     }
-    var pendingBatchDelete by remember { mutableStateOf(false) }
-    var batchTagDialog by remember { mutableStateOf(false) }
+    var pendingBatchDelete by rememberSaveable { mutableStateOf(false) }
+    var batchTagDialog by rememberSaveable { mutableStateOf(false) }
     var bookMenuTarget by remember { mutableStateOf<BookWithChapters?>(null) }
     val resume by vm.continueListening.collectAsStateWithLifecycle()
     val newBookCount by vm.newBookCount.collectAsStateWithLifecycle()
@@ -612,7 +616,8 @@ fun LibraryScreen(
                 item(span = { GridItemSpan(maxLineSpan) }) { ResumeSection() }
 
                 if (books.isEmpty()) {
-                    item(span = { GridItemSpan(maxLineSpan) }) {
+                    // До першої відповіді бази — нічого, а не «порожньо» (див. LibraryViewModel.booksOrNull).
+                    if (booksLoaded) item(span = { GridItemSpan(maxLineSpan) }) {
                         EmptyShelf(onAdd = { addSheet = true }, onDemo = { vm.importDemo() })
                     }
                 } else if (visible.isEmpty()) {
@@ -664,7 +669,8 @@ fun LibraryScreen(
                 item { ResumeSection() }
 
                 if (books.isEmpty()) {
-                    item {
+                    // До першої відповіді бази — нічого, а не «порожньо» (див. LibraryViewModel.booksOrNull).
+                    if (booksLoaded) item {
                         EmptyShelf(onAdd = { addSheet = true }, onDemo = { vm.importDemo() })
                     }
                 } else if (visible.isEmpty()) {
@@ -709,6 +715,7 @@ fun LibraryScreen(
         }
 
         if (!isMultiSelect) {
+            val fabInsets = shelfFabInsets(LocalConfiguration.current.screenHeightDp)
             // «Вгору» — бо іншого способу стрибнути на полиці немає: ні смужки
             // прокрутки, ні алфавітного покажчика. Сотня книг у списку — це
             // близько двадцяти екранів, і повернення до початку коштувало стільки
@@ -732,7 +739,7 @@ fun LibraryScreen(
                 visible = scrolledFar && !isMultiSelect,
                 enter = androidx.compose.animation.fadeIn(),
                 exit = androidx.compose.animation.fadeOut(),
-                modifier = Modifier.align(Alignment.BottomEnd).padding(end = Spacing.xl, bottom = 168.dp),
+                modifier = Modifier.align(Alignment.BottomEnd).padding(end = Spacing.xl, bottom = fabInsets.scrollTopBottom),
             ) {
                 androidx.compose.material3.SmallFloatingActionButton(
                     onClick = {
@@ -756,7 +763,7 @@ fun LibraryScreen(
             if (books.isNotEmpty()) {
                 FloatingActionButton(
                     onClick = { if (!busy) addSheet = true },
-                    modifier = Modifier.align(Alignment.BottomEnd).padding(end = Spacing.xl, bottom = 96.dp),
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(end = Spacing.xl, bottom = fabInsets.addBottom),
                     containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary,
                 ) {
@@ -931,8 +938,8 @@ fun LibraryScreen(
     }
 
     pendingRename?.let { pending ->
-        var title by remember(pending.id) { mutableStateOf(pending.title) }
-        var author by remember(pending.id) { mutableStateOf(pending.author) }
+        var title by rememberSaveable(pending.id) { mutableStateOf(pending.title) }
+        var author by rememberSaveable(pending.id) { mutableStateOf(pending.author) }
         AlertDialog(
             onDismissRequest = { vm.dismissRename() },
             title = { Text(stringResource(R.string.rename_dialog_title)) },
@@ -959,7 +966,7 @@ fun LibraryScreen(
     }
 
     if (batchTagDialog) {
-        var tagText by remember { mutableStateOf("") }
+        var tagText by rememberSaveable { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { batchTagDialog = false },
             title = { Text(stringResource(R.string.batch_assign_tag)) },
@@ -1190,3 +1197,19 @@ private fun ShelfGroupHeader(title: String) {
  * не з'явилася б там, де вже хочеться повернутися.
  */
 private const val SCROLL_TOP_AFTER_ITEMS = 12
+
+/**
+ * Відступи плаваючих кнопок полиці від низу. На звичайному екрані кнопка «Додати»
+ * стоїть на 96 dp над мініплеєром, «Вгору» — над нею. Телефон у горизонтальній
+ * орієнтації лишає полиці ~200 dp висоти (мініплеєр і нижня навігація забирають решту),
+ * і з такими відступами «Додати» вилазила на шапку й накривала кнопку пошуку
+ * (знайдено на Redmi Note 11 Pro, 13 листопада 2026). Низький екран — компактні відступи.
+ */
+internal data class ShelfFabInsets(val addBottom: Dp, val scrollTopBottom: Dp)
+
+internal fun shelfFabInsets(screenHeightDp: Int): ShelfFabInsets =
+    if (screenHeightDp < COMPACT_HEIGHT_DP) ShelfFabInsets(addBottom = 16.dp, scrollTopBottom = 84.dp)
+    else ShelfFabInsets(addBottom = 96.dp, scrollTopBottom = 168.dp)
+
+/** Material: висота вікна менше 480 dp — «compact» (телефон, повернутий горизонтально). */
+private const val COMPACT_HEIGHT_DP = 480

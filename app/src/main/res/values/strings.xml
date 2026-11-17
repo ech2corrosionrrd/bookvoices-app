@@ -119,7 +119,22 @@
     <string name="section_backup">Backup &amp; Restore</string>
     <string name="backup_desc">Save bookmarks, tags, listening history and positions to JSON. Restore replaces the current shelf (audio files stay where they are). The Up Next queue and library folders are not in the file — they stay on this phone.</string>
     <string name="btn_backup">Create backup</string>
+    <string name="btn_backup_save">Save to file</string>
+    <string name="backup_save_failed">Could not save the file</string>
+    <string name="file_saved">File saved</string>
     <string name="btn_restore">Restore</string>
+    <string name="auto_backup_title">Automatic backup to a folder</string>
+    <string name="auto_backup_desc">Once a day the app saves a backup to a folder you choose and keeps the last 7. Pick a folder on your memory card or one that Google Drive or another app syncs, so your progress and bookmarks survive losing the phone. Restore it with the Restore button above.</string>
+    <string name="auto_backup_pick">Choose folder</string>
+    <string name="auto_backup_change">Change folder</string>
+    <string name="auto_backup_now">Back up now</string>
+    <string name="auto_backup_off">Turn off</string>
+    <string name="auto_backup_folder">Folder: %s</string>
+    <string name="auto_backup_last">Last backup: %s</string>
+    <string name="auto_backup_never">The first backup will appear in a minute</string>
+    <string name="auto_backup_failed">Could not save the backup. The folder may have been deleted or access was lost — choose the folder again.</string>
+    <string name="auto_backup_saved">Backup saved</string>
+    <string name="auto_backup_pick_failed">Could not get access to this folder</string>
     <string name="backup_restored_success">Shelf replaced with the backup.</string>
     <string name="backup_restore_failed">Failed to read backup file</string>
     <string name="section_cloud">Cloud Sync (WebDAV)</string>
@@ -143,6 +158,18 @@
 
     <string name="version_format">Version %s</string>
     <string name="rate_app">Rate BookVoices on Google Play</string>
+    <string name="share_log">Share diagnostic log</string>
+    <string name="share_log_desc">Only BookVoices entries, without file paths. Nothing is sent automatically.</string>
+    <string name="report_problem">Report a problem</string>
+    <string name="report_problem_desc">Something not working? Write to the developer. A diagnostic log without book titles or file paths is attached, and you see everything before sending.</string>
+    <string name="report_by_email">Write an email</string>
+    <string name="report_on_github">GitHub</string>
+    <string name="report_email_subject">BookVoices %1$s: problem</string>
+    <string name="report_email_body">What happened:\n\n\nWhat were you doing just before:\n\n</string>
+    <string name="report_issue_title">Problem in BookVoices</string>
+    <string name="report_no_email_app">No email app found. Try GitHub.</string>
+    <string name="report_no_browser">Could not open the browser.</string>
+    <string name="shortcut_resume_long">Continue “%1$s”</string>
     <string name="seconds_format">%d s</string>
     <string name="minutes_format">%d min</string>
     <string name="btn_start">Start</string>
@@ -180,6 +207,19 @@
     <string name="new_book_title">New book</string>
     <string name="chapter_word">Chapter</string>
     <string name="chapter_number">Chapter %1$d</string>
+    <string name="chapters_number_action">Number</string>
+    <string name="chapter_rename_hint">Long-press a chapter to rename it</string>
+    <string name="chapter_rename_title">Rename chapter</string>
+    <string name="chapters_number_confirm_title">Number the chapters?</string>
+    <string name="chapters_numbered_none">Chapters are already numbered</string>
+    <plurals name="chapters_number_confirm_msg">
+        <item quantity="one">The names of all %1$d chapters will change to “%2$s”, “%3$s” and so on. Old names are not kept.</item>
+        <item quantity="other">The names of all %1$d chapters will change to “%2$s”, “%3$s” and so on. Old names are not kept.</item>
+    </plurals>
+    <plurals name="chapters_numbered">
+        <item quantity="one">%d chapter renamed</item>
+        <item quantity="other">%d chapters renamed</item>
+    </plurals>
     <string name="demo_book_title">BookVoices. Intro</string>
     <string name="demo_book_author">BookVoices</string>
     <string name="import_no_space">Not enough free space to copy the file</string>
@@ -382,8 +422,8 @@
     <string name="export_catalog_exported_at">Exported: %s</string>
     <string name="export_catalog_total_books">Total books: %d</string>
     <string name="export_catalog_total_duration">Total duration: %s</string>
-    <string name="auto_bookmark_bluetooth">Auto-bookmark on Bluetooth disconnect</string>
-    <string name="auto_bookmark_bluetooth_desc">Automatically save a bookmark when car or headphones disconnect</string>
+    <string name="auto_bookmark_bluetooth">Auto-bookmark when headphones disconnect</string>
+    <string name="auto_bookmark_bluetooth_desc">Saves a bookmark when Bluetooth or wired headphones drop the audio</string>
     <string name="resume_on_reconnect">Resume when headphones reconnect</string>
     <string name="resume_on_reconnect_desc">After a short disconnect (up to 15 minutes), continue playing when headphones or the car connect again</string>
     <string name="bookmark_bluetooth_disconnected">Bluetooth disconnected at %s</string>
@@ -395,7 +435,7 @@
     <string name="pro_lifetime_desc">Lifetime premium license with no recurring fees</string>
     <string name="pro_benefit_skip_silence">Dynamic silence &amp; pause skipping</string>
     <string name="pro_benefit_volume_boost">Hardware Volume Boost (+6 dB)</string>
-    <string name="pro_benefit_bluetooth">Auto-bookmark on Bluetooth disconnect</string>
+    <string name="pro_benefit_bluetooth">Auto-bookmark when headphones disconnect</string>
     <string name="pro_benefit_equalizer">Voice equalizer and pitch correction</string>
     <string name="pro_benefit_characters">Character list for every book</string>
     <string name="pro_locked">💎 Pro feature</string>
@@ -437,4 +477,19 @@
     <string name="mark_finished">Mark as finished</string>
     <string name="mark_unfinished">Mark as unfinished</string>
     <string name="pro_benefit_pitch">Voice pitch adjustment</string>
+    <string name="queue_move_up">Move up</string>
+    <string name="queue_move_down">Move down</string>
+    <string name="share_book_summary">Share book summary</string>
+    <string name="change_cover">Change cover</string>
+    <string name="export_history_csv">Export listening history (CSV)</string>
+    <string name="stats_streak_current">Streak: %d d</string>
+    <string name="stats_streak_best">Best: %d d</string>
+    <string name="daily_goal_title">Daily goal</string>
+    <string name="daily_goal_off">Off</string>
+    <string name="daily_goal_set">Set daily goal</string>
+    <string name="daily_goal_progress">Today: %1$s / %2$s</string>
+    <string name="ab_repeat_title">A–B repeat</string>
+    <string name="ab_repeat_waiting_b">A: %s → tap for B</string>
+    <string name="ab_repeat_active">A–B: %1$s – %2$s</string>
+    <string name="pro_benefit_ab_repeat">A–B segment repeat</string>
 </resources>

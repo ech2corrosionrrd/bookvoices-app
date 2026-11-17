@@ -183,4 +183,45 @@ class DuplicateDetectorTest {
     fun overlapsUrisEmptyIncomingCountsAsOverlap() {
         org.junit.Assert.assertTrue(DuplicateDetector.overlapsUris(shelf, emptyList()))
     }
+
+    @Test
+    fun renamedChaptersStillMatchByDurations() {
+        // Глави перейменували на одному пристрої: назви розійшлися, тривалості — ні.
+        val found = DuplicateDetector.findIn(
+            books = shelf,
+            title = "Кобзар",
+            chapterTitles = listOf("Глава перша", "Глава друга"),
+            durations = listOf(1000L, 2000L),
+            uris = listOf("content://other/1.mp3", "content://other/2.mp3"),
+        )
+        assertNotNull(found)
+    }
+
+    @Test
+    fun unknownDurationsStillNeedMatchingTitles() {
+        val noDurations = listOf(
+            existing("x", "Кобзар", listOf(Triple("Розділ 1", "content://a/1.mp3", 0L))),
+        )
+        val found = DuplicateDetector.findIn(
+            books = noDurations,
+            title = "Кобзар",
+            chapterTitles = listOf("Інша назва"),
+            durations = listOf(0L),
+            uris = listOf("content://b/1.mp3"),
+        )
+        assertNull(found)
+    }
+
+    @Test
+    fun chapterOrderFromDatabaseDoesNotMatter() {
+        val shuffled = shelf.map { it.copy(chapters = it.chapters.reversed()) }
+        val found = DuplicateDetector.findIn(
+            books = shuffled,
+            title = "Кобзар",
+            chapterTitles = listOf("Розділ 1", "Розділ 2"),
+            durations = listOf(1000L, 2000L),
+            uris = listOf("content://other/1.mp3", "content://other/2.mp3"),
+        )
+        assertNotNull(found)
+    }
 }

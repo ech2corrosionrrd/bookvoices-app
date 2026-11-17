@@ -46,6 +46,7 @@ import ua.nichnyk.listen.data.TOMBSTONE_TTL_DAYS
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [33], application = android.app.Application::class)
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class SyncDeletionTest {
 
     private lateinit var context: Context

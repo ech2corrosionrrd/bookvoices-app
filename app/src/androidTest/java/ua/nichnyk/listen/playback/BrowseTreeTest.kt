@@ -16,6 +16,7 @@ import com.google.common.collect.ImmutableList
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -48,6 +49,7 @@ class BrowseTreeTest {
 
     private lateinit var app: ListenApp
     private var browser: MediaBrowser? = null
+    private var smartRewindBefore: Boolean = true
 
     @Before
     fun setUp() = runBlocking {
@@ -55,6 +57,13 @@ class BrowseTreeTest {
         // Фікстури нижче мають вигадані адреси `file:///…`, яких на диску немає, — без
         // цього фільтр втрачених книг сховав би всю «бібліотеку» тесту.
         app.container.availability = AvailabilityCache(probe = { emptySet() })
+        // Фікстура b1 має lastPlayedAt у 1970-му, тож розумний відкат (увімкнений за замовчуванням)
+        // зсунув би збережені 10 с на 30 с назад, тобто на нуль. Тут перевіряється саме збережене місце.
+        smartRewindBefore = app.container.prefs.settings.first().smartRewind
+        app.container.prefs.setSmartRewind(false)
+        app.container.prefs.settings.first { !it.smartRewind }
+        // Сервіс підхоплює налаштування окремою підпискою: даємо їй дійти.
+        delay(500)
         clearShelf()
         insertBook(
             "b1", "Тіні забутих предків", "Коцюбинський",
@@ -80,6 +89,7 @@ class BrowseTreeTest {
         withContext(Dispatchers.Main) { browser?.release() }
         browser = null
         clearShelf()
+        app.container.prefs.setSmartRewind(smartRewindBefore)
         app.container.availability = AvailabilityCache(app.container.repo::inaccessibleUris)
     }
 
@@ -223,6 +233,10 @@ class BrowseTreeTest {
         // book_id в extras — те, за чим плеєр упізнає книгу, коли главу
         // запустили з машини, а не з полиці.
         assertEquals("b1", chapters.first().mediaMetadata.extras?.getString("book_id"))
+        // displayTitle доходить через межу сесії: без нього MIUI склеює опис
+        // із «назва, виконавець, альбом» (див. SessionMetadata.kt).
+        val first = chapters.first().mediaMetadata
+        assertEquals(first.title.toString(), first.displayTitle?.toString())
     }
 
     /**
@@ -597,10 +611,15 @@ class BrowseTreeTest {
             // Сервіс живе між тестами: якщо попередній лишив відтворення ввімкненим, плеєр
             // на вигаданому `file:///…` падає з помилкою й перескакує на наступну главу.
             // Запит має перевіряти лише, куди резолвиться пошук, тож ставимо на паузу.
+            // І чергу спершу спорожняємо: попередній тест лишає в сервісі ту саму книгу
+            // з трьох глав на третій, і awaitQueueOf(3) пройшов би на старій черзі ще до
+            // відповіді на запит — тест падав через раз у повному прогоні.
             withContext(Dispatchers.Main) {
                 c.playWhenReady = false
-                c.setMediaItem(request)
+                c.clearMediaItems()
             }
+            c.awaitQueueOf(0)
+            withContext(Dispatchers.Main) { c.setMediaItem(request) }
             c.awaitQueueOf(3)
             withContext(Dispatchers.Main) {
                 assertEquals("і теж продовжити з збереженого місця", 1, c.currentMediaItemIndex)

@@ -1,11 +1,13 @@
 package ua.nichnyk.listen.data
 
+import ua.nichnyk.listen.forAppLocale
 import android.content.Context
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.ByteBuffer
@@ -26,13 +28,18 @@ class DemoFactory(private val context: Context) {
     suspend fun createSpokenOrTone(): DemoTrack = withContext(Dispatchers.IO) {
         val dir = File(context.filesDir, "demo").apply { mkdirs() }
         val spoken = File(dir, "nichnyk-demo.wav")
-        val ok = runCatching { synthesize(spoken) }.getOrDefault(false)
+        // Тайм-аут обов'язковий: якщо системний рушій TTS падає посеред озвучки
+        // (Pico на емуляторі Android 8, 17 листопада 2026), ні onDone, ні onError не
+        // приходять, і «Імпорт…» висів без кінця. Без голосу демо стає тоном.
+        val ok = runCatching {
+            withTimeoutOrNull(SYNTH_TIMEOUT_MS) { synthesize(spoken) } ?: false
+        }.getOrDefault(false)
         if (ok && spoken.exists() && spoken.length() > 44L) {
-            DemoTrack(spoken, context.getString(R.string.demo_track_spoken), wavDurationMs(spoken))
+            DemoTrack(spoken, context.forAppLocale().getString(R.string.demo_track_spoken), wavDurationMs(spoken))
         } else {
             val tone = File(dir, "nichnyk-tone.wav")
             writeWarmTone(tone)
-            DemoTrack(tone, context.getString(R.string.demo_track_tone), wavDurationMs(tone))
+            DemoTrack(tone, context.forAppLocale().getString(R.string.demo_track_tone), wavDurationMs(tone))
         }
     }
 
@@ -47,7 +54,7 @@ class DemoFactory(private val context: Context) {
                 val localTts = tts ?: return@TextToSpeech
                 // Мова демо йде за мовою інтерфейсу: сам текст береться з ресурсів,
                 // тож озвучувати його українським голосом при англійському UI не варто.
-                val uiLocale = Locale.forLanguageTag(context.getString(R.string.demo_tts_language))
+                val uiLocale = Locale.forLanguageTag(context.forAppLocale().getString(R.string.demo_tts_language))
                 val lang = when {
                     localTts.isLanguageAvailable(uiLocale) >= TextToSpeech.LANG_AVAILABLE -> uiLocale
                     localTts.isLanguageAvailable(Locale.getDefault()) >= TextToSpeech.LANG_AVAILABLE -> Locale.getDefault()
@@ -67,7 +74,7 @@ class DemoFactory(private val context: Context) {
                         if (cont.isActive) cont.resume(false)
                     }
                 })
-                val result = localTts.synthesizeToFile(context.getString(R.string.demo_spoken_text), null, out, "demo")
+                val result = localTts.synthesizeToFile(context.forAppLocale().getString(R.string.demo_spoken_text), null, out, "demo")
                 if (result != TextToSpeech.SUCCESS && cont.isActive) {
                     localTts.shutdown()
                     cont.resume(false)
@@ -123,6 +130,9 @@ class DemoFactory(private val context: Context) {
     }
 
     companion object {
+        /** Озвучка ~15 с тексту на живому рушії займає 1–3 с; 20 с — із запасом на повільний телефон. */
+        private const val SYNTH_TIMEOUT_MS = 20_000L
+
         fun wavDurationMs(file: File): Long {
             val parsed = runCatching {
                 file.inputStream().use { ins ->

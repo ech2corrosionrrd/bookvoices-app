@@ -5,7 +5,9 @@ import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
@@ -51,7 +53,7 @@ class WebDavSyncWorker(
                 // поводився саме так — показував помилку й нічого не вивантажував.
                 if (!app.container.repo.mergeBackupJson(json)) {
                     AppLog.w("WebDavSync: файл із хмари не злився — вивантаження скасовано")
-                    return Result.retry()
+                    return retryOrGiveUp(prefs)
                 }
             },
             onFailure = { error ->
@@ -89,17 +91,40 @@ class WebDavSyncWorker(
             prefs.setWebDavAuthFailed(true)
             return Result.failure()
         }
+        return retryOrGiveUp(prefs)
+    }
+
+    /**
+     * Retry з обмеженням: без ліміту WorkManager повторював би невдалий прогін
+     * із наростаючою паузою безкінечно. Після [WEBDAV_MAX_ATTEMPTS] спроб — failure
+     * і той самий прапорець помилки, що бачить користувач у налаштуваннях;
+     * наступний періодичний запуск почне лічильник спроб заново.
+     */
+    private suspend fun retryOrGiveUp(prefs: UserPrefs): Result {
+        if (webDavRetriesExhausted(runAttemptCount)) {
+            AppLog.w("WebDavSync: $runAttemptCount спроб без успіху — припиняємо до наступного запуску")
+            prefs.setWebDavAuthFailed(true)
+            return Result.failure()
+        }
         return Result.retry()
     }
 }
 
+internal const val WEBDAV_MAX_ATTEMPTS = 5
+
+/** true — спроб уже забагато, retry більше не просимо. */
+internal fun webDavRetriesExhausted(runAttemptCount: Int): Boolean =
+    runAttemptCount >= WEBDAV_MAX_ATTEMPTS
+
 object WebDavSyncScheduler {
     private const val UNIQUE = "bookvoices_webdav_sync"
+    private const val UNIQUE_AFTER_LISTEN = "bookvoices_webdav_sync_after_listen"
 
     fun apply(context: Context, enabled: Boolean) {
         val wm = WorkManager.getInstance(context.applicationContext)
         if (!enabled) {
             wm.cancelUniqueWork(UNIQUE)
+            wm.cancelUniqueWork(UNIQUE_AFTER_LISTEN)
             return
         }
         val request = PeriodicWorkRequestBuilder<WebDavSyncWorker>(6, TimeUnit.HOURS)
@@ -111,5 +136,37 @@ object WebDavSyncScheduler {
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.MINUTES)
             .build()
         wm.enqueueUniquePeriodicWork(UNIQUE, ExistingPeriodicWorkPolicy.UPDATE, request)
+    }
+
+    /**
+     * Відкладена синхронізація після зупинки відтворення.
+     *
+     * Періодичний воркер крутиться раз на 6 годин, тож між телефоном у дорозі й
+     * планшетом удома свіжа позиція без цього не встигала доїхати. Затримка в
+     * хвилину з `ExistingWorkPolicy.REPLACE` склеює короткі паузи в один запит,
+     * а відновлення гри скасовує його через [cancelAfterListening].
+     */
+    fun enqueueAfterListening(context: Context) {
+        runCatching {
+            val wm = WorkManager.getInstance(context.applicationContext)
+            val request = OneTimeWorkRequestBuilder<WebDavSyncWorker>()
+                .setInitialDelay(1, TimeUnit.MINUTES)
+                .setConstraints(
+                    Constraints.Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED)
+                        .build(),
+                )
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.MINUTES)
+                .build()
+            wm.enqueueUniqueWork(UNIQUE_AFTER_LISTEN, ExistingWorkPolicy.REPLACE, request)
+        }.onFailure {
+            AppLog.w("WebDavSyncScheduler: не запланували синхронізацію після паузи", it)
+        }
+    }
+
+    fun cancelAfterListening(context: Context) {
+        runCatching {
+            WorkManager.getInstance(context.applicationContext).cancelUniqueWork(UNIQUE_AFTER_LISTEN)
+        }
     }
 }

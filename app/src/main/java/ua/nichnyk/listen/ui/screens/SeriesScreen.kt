@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.AddCircleOutline
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -75,6 +76,16 @@ fun SeriesScreen(
                             Icons.AutoMirrored.Outlined.ArrowBack,
                             contentDescription = stringResource(R.string.back),
                         )
+                    }
+                },
+                actions = {
+                    if (seriesBooks.isNotEmpty()) {
+                        IconButton(onClick = { libraryVm.addBooksToQueue(seriesBooks) }) {
+                            Icon(
+                                Icons.Outlined.AddCircleOutline,
+                                contentDescription = stringResource(R.string.add_to_queue),
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(

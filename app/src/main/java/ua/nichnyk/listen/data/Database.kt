@@ -88,6 +88,33 @@ interface LibraryDao {
     )
     suspend fun extendBook(bookId: String, addedMs: Long)
 
+    @Query("UPDATE chapters SET title = :title WHERE id = :chapterId AND bookId = :bookId")
+    suspend fun setChapterTitle(bookId: String, chapterId: String, title: String): Int
+
+    /** Закладка зберігає копію назви глави — інакше в списку закладок лишилася б стара. */
+    @Query("UPDATE bookmarks SET chapterTitle = :title WHERE chapterId = :chapterId AND bookId = :bookId")
+    suspend fun setBookmarkChapterTitle(bookId: String, chapterId: String, title: String)
+
+    @Query("UPDATE books SET renamedAt = :renamedAt WHERE id = :bookId AND renamedAt < :renamedAt")
+    suspend fun touchRenamedAt(bookId: String, renamedAt: Long)
+
+    /** Усі назви однією транзакцією: «Пронумерувати» на 89 глав не має лишити книгу наполовину. */
+    @Transaction
+    suspend fun renameChapters(
+        bookId: String,
+        titles: Map<String, String>,
+        renamedAt: Long = System.currentTimeMillis(),
+    ) {
+        var changed = false
+        for ((chapterId, title) in titles) {
+            if (setChapterTitle(bookId, chapterId, title) > 0) {
+                setBookmarkChapterTitle(bookId, chapterId, title)
+                changed = true
+            }
+        }
+        if (changed && renamedAt > 0L) touchRenamedAt(bookId, renamedAt)
+    }
+
     /** Лікує лише нуль: непорожню тривалість з імпорту не чіпає. Повертає кількість змінених глав. */
     @Query("UPDATE chapters SET durationMs = :durationMs WHERE id = :chapterId AND durationMs <= 0")
     suspend fun fillChapterDuration(chapterId: String, durationMs: Long): Int
@@ -335,8 +362,11 @@ interface LibraryDao {
     ) {
         val startedAt = now - deltaMs
         val last = getLastSession()
+        // Через північ не зливаємо: пауза до 15 хв лишає в сесії лише зіграні
+        // хвилини, а експорт розкладає їх як суцільний відрізок і завищує добу.
         if (last != null &&
             last.bookId == bookId &&
+            sameLocalDay(last.timestamp, startedAt) &&
             startedAt - (last.timestamp + last.durationMs) <= mergeGapMs
         ) {
             extendSession(last.id, deltaMs)
@@ -722,8 +752,108 @@ abstract class ListenDatabase : RoomDatabase() {
             }
         }
 
-        private fun create(context: Context): ListenDatabase =
-            Room.databaseBuilder(context, ListenDatabase::class.java, "nichnyk.db")
+        /**
+         * Версія схеми з заголовка файла SQLite (`user_version`, зсув 60, big-endian).
+         * Читаємо сирі байти, а не відкриваємо базу: відкриття запустило б
+         * знищувальний відкат раніше, ніж ми встигнемо зробити копію. -1 — не вдалося.
+         */
+        internal fun readUserVersion(file: java.io.File): Int = runCatching {
+            java.io.RandomAccessFile(file, "r").use { f ->
+                if (f.length() < 64) return@use -1
+                f.seek(60)
+                f.readInt()
+            }
+        }.getOrDefault(-1)
+
+        /**
+         * Версія схеми з урахуванням WAL. Заголовок файла оновлюється лише при
+         * контрольній точці, тож `user_version`, записаний новішою збіркою, може
+         * лежати ще в `-wal`. Якщо WAL непорожній, питаємо SQLite (відкриття лише
+         * на читання не запускає Room і нічого не знищує). Не вдалося — беремо
+         * більше з відомого й, коли невідомо, вважаємо базу «можливо новішою»
+         * ([Int.MAX_VALUE]), бо зайва копія дешевша за втрачену полицю.
+         */
+        internal fun readEffectiveVersion(dbFile: java.io.File): Int {
+            val header = readUserVersion(dbFile)
+            val wal = java.io.File(dbFile.path + "-wal")
+            if (!wal.exists() || wal.length() == 0L) return header
+            val viaSqlite = runCatching {
+                android.database.sqlite.SQLiteDatabase.openDatabase(
+                    dbFile.path, null, android.database.sqlite.SQLiteDatabase.OPEN_READONLY,
+                ).use { it.version }
+            }.getOrNull()
+            return viaSqlite ?: Int.MAX_VALUE
+        }
+
+        /**
+         * Атомарна копія БД (і WAL) у [backupDir]: спершу `*.tmp`, потім перейменування,
+         * тож обірване копіювання ніколи не псує попередню справну копію. Перед
+         * копіюванням перевіряємо місце (удвічі більше за дані). `-shm` не копіюємо:
+         * це відтворюваний індекс WAL. `true` — нову копію збережено.
+         */
+        internal fun backupDatabaseFiles(
+            dbFile: java.io.File,
+            backupDir: java.io.File,
+            usableSpace: Long = backupDir.usableSpace,
+        ): Boolean {
+            val wal = java.io.File(dbFile.path + "-wal")
+            val hasWal = wal.exists() && wal.length() > 0L
+            val need = dbFile.length() + if (hasWal) wal.length() else 0L
+            if (usableSpace < 2 * need) return false
+
+            val backup = java.io.File(backupDir, "$DB_NAME.downgrade.bak")
+            val walBackup = java.io.File(backup.path + "-wal")
+            val tmp = java.io.File(backup.path + ".tmp")
+            val walTmp = java.io.File(walBackup.path + ".tmp")
+            try {
+                dbFile.copyTo(tmp, overwrite = true)
+                if (hasWal) wal.copyTo(walTmp, overwrite = true)
+                // Лише після повного копіювання підміняємо справжні файли.
+                java.nio.file.Files.move(
+                    tmp.toPath(), backup.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                )
+                if (hasWal) {
+                    java.nio.file.Files.move(
+                        walTmp.toPath(), walBackup.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                    )
+                } else {
+                    walBackup.delete()
+                }
+                return true
+            } catch (e: Exception) {
+                tmp.delete()
+                walTmp.delete()
+                throw e
+            }
+        }
+
+        /**
+         * Страховка перед `fallbackToDestructiveMigrationOnDowngrade`: якщо файл бази
+         * новіший за схему цієї збірки, Room його знищить. Робимо одну копію в filesDir
+         * (див. [backupDatabaseFiles]) разом із WAL. Копія best-effort: збій тут не
+         * повинен заважати запуску. Відновлення вручну — див. BUILD.md.
+         */
+        private fun backupBeforeDowngrade(context: Context) {
+            runCatching {
+                val dbFile = context.getDatabasePath(DB_NAME)
+                if (!dbFile.exists() || readEffectiveVersion(dbFile) <= VERSION) return
+                if (backupDatabaseFiles(dbFile, context.filesDir)) {
+                    ua.nichnyk.listen.AppLog.w("ListenDatabase: база новіша за схему $VERSION, копію збережено в $DB_NAME.downgrade.bak")
+                } else {
+                    ua.nichnyk.listen.AppLog.w("ListenDatabase: недостатньо місця для копії перед пониженням версії")
+                }
+            }.onFailure { ua.nichnyk.listen.AppLog.w("ListenDatabase: не вдалося зберегти копію перед пониженням версії", it) }
+        }
+
+        private const val DB_NAME = "nichnyk.db"
+
+        private fun create(context: Context): ListenDatabase {
+            backupBeforeDowngrade(context)
+            return build(context)
+        }
+
+        private fun build(context: Context): ListenDatabase =
+            Room.databaseBuilder(context, ListenDatabase::class.java, DB_NAME)
                 .addMigrations(
                     MIGRATION_1_2,
                     MIGRATION_2_3,
@@ -746,5 +876,12 @@ abstract class ListenDatabase : RoomDatabase() {
                 .fallbackToDestructiveMigrationOnDowngrade(dropAllTables = true)
                 .build()
     }
+}
+
+/** Один локальний день. Сесії через північ не зливаються — див. [LibraryDao.appendSession]. */
+private fun sameLocalDay(a: Long, b: Long): Boolean {
+    val zone = java.time.ZoneId.systemDefault()
+    return java.time.Instant.ofEpochMilli(a).atZone(zone).toLocalDate() ==
+        java.time.Instant.ofEpochMilli(b).atZone(zone).toLocalDate()
 }
 

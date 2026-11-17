@@ -1,5 +1,6 @@
 package ua.nichnyk.listen.ui.widget
 
+import ua.nichnyk.listen.forAppLocale
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
@@ -15,6 +16,30 @@ import ua.nichnyk.listen.R
 import ua.nichnyk.listen.playback.PlayerUiState
 
 class NowPlayingWidgetProvider : AppWidgetProvider() {
+
+    /**
+     * Старі віджети на робочому столі тримають PendingIntent на цей провайдер із діями
+     * PLAY_PAUSE/REWIND/FORWARD. Тут їх свідомо НЕ обробляємо (провайдер exported, і
+     * будь-який застосунок міг би керувати відтворенням), а після оновлення застосунку
+     * перемальовуємо всі віджети — PendingIntent'и стають на неекспортований
+     * [NowPlayingWidgetActionReceiver]. ACTION_MY_PACKAGE_REPLACED — захищений
+     * системний broadcast, підробити його ззовні неможливо.
+     */
+    override fun onReceive(context: Context, intent: Intent) {
+        super.onReceive(context, intent)
+        if (intent.action == Intent.ACTION_MY_PACKAGE_REPLACED) {
+            val app = context.applicationContext as? ListenApp
+            val state = app?.container?.player?.state?.value ?: PlayerUiState()
+            val pending = goAsync()
+            Thread({
+                try {
+                    updateAllWidgets(context, state)
+                } finally {
+                    pending.finish()
+                }
+            }, "widget-refresh").start()
+        }
+    }
 
     override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
         val app = context.applicationContext as? ListenApp
@@ -33,24 +58,7 @@ class NowPlayingWidgetProvider : AppWidgetProvider() {
         }, "widget-update").start()
     }
 
-    override fun onReceive(context: Context, intent: Intent) {
-        super.onReceive(context, intent)
-        val app = context.applicationContext as? ListenApp ?: return
-        val player = app.container.player
-        runCatching {
-            when (intent.action) {
-                ACTION_PLAY_PAUSE -> player.playPause()
-                ACTION_REWIND -> player.skipBack()
-                ACTION_FORWARD -> player.skipForward()
-            }
-        }
-    }
-
     companion object {
-        const val ACTION_PLAY_PAUSE = "ua.nichnyk.listen.widget.PLAY_PAUSE"
-        const val ACTION_REWIND = "ua.nichnyk.listen.widget.REWIND"
-        const val ACTION_FORWARD = "ua.nichnyk.listen.widget.FORWARD"
-
         fun updateAllWidgets(context: Context, state: PlayerUiState) {
             val appWidgetManager = AppWidgetManager.getInstance(context) ?: return
             val componentName = ComponentName(context, NowPlayingWidgetProvider::class.java)
@@ -97,7 +105,7 @@ class NowPlayingWidgetProvider : AppWidgetProvider() {
                     views.setImageViewResource(R.id.widget_cover, R.mipmap.ic_launcher)
                 }
             } else {
-                views.setTextViewText(R.id.widget_title, context.getString(R.string.widget_no_book))
+                views.setTextViewText(R.id.widget_title, context.forAppLocale().getString(R.string.widget_no_book))
                 views.setTextViewText(R.id.widget_subtitle, "")
                 views.setProgressBar(R.id.widget_progress, 100, 0, false)
                 views.setViewVisibility(R.id.widget_progress, View.INVISIBLE)
@@ -113,11 +121,11 @@ class NowPlayingWidgetProvider : AppWidgetProvider() {
             // із налаштувань і могли перемотувати на 10 або 60.
             views.setContentDescription(
                 R.id.widget_btn_rewind,
-                context.getString(R.string.rewind_sec, state.skipBackMs / 1000),
+                context.forAppLocale().getString(R.string.rewind_sec, state.skipBackMs / 1000),
             )
             views.setContentDescription(
                 R.id.widget_btn_forward,
-                context.getString(R.string.forward_sec, state.skipForwardMs / 1000),
+                context.forAppLocale().getString(R.string.forward_sec, state.skipForwardMs / 1000),
             )
 
             // Intent to open App
@@ -133,8 +141,8 @@ class NowPlayingWidgetProvider : AppWidgetProvider() {
             views.setOnClickPendingIntent(R.id.widget_root, openAppPendingIntent)
 
             // Button Intents
-            val playPauseIntent = Intent(context, NowPlayingWidgetProvider::class.java).apply {
-                action = ACTION_PLAY_PAUSE
+            val playPauseIntent = Intent(context, NowPlayingWidgetActionReceiver::class.java).apply {
+                action = NowPlayingWidgetActionReceiver.ACTION_PLAY_PAUSE
             }
             val playPausePending = PendingIntent.getBroadcast(
                 context,
@@ -144,8 +152,8 @@ class NowPlayingWidgetProvider : AppWidgetProvider() {
             )
             views.setOnClickPendingIntent(R.id.widget_btn_play_pause, playPausePending)
 
-            val rewindIntent = Intent(context, NowPlayingWidgetProvider::class.java).apply {
-                action = ACTION_REWIND
+            val rewindIntent = Intent(context, NowPlayingWidgetActionReceiver::class.java).apply {
+                action = NowPlayingWidgetActionReceiver.ACTION_REWIND
             }
             val rewindPending = PendingIntent.getBroadcast(
                 context,
@@ -155,8 +163,8 @@ class NowPlayingWidgetProvider : AppWidgetProvider() {
             )
             views.setOnClickPendingIntent(R.id.widget_btn_rewind, rewindPending)
 
-            val forwardIntent = Intent(context, NowPlayingWidgetProvider::class.java).apply {
-                action = ACTION_FORWARD
+            val forwardIntent = Intent(context, NowPlayingWidgetActionReceiver::class.java).apply {
+                action = NowPlayingWidgetActionReceiver.ACTION_FORWARD
             }
             val forwardPending = PendingIntent.getBroadcast(
                 context,

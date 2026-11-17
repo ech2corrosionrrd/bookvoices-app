@@ -1,0 +1,40 @@
+BookVoices to odtwarzacz audiobooków dla Twojej własnej kolekcji. Dodaj folder z plikami mp3, m4b, ogg lub flac i słuchaj dokładnie od miejsca, w którym skończyłeś. Bez konta, bez reklam, bez subskrypcji; pliki zostają na Twoim telefonie.
+
+SŁUCHANIE
+• mp3, m4b, ogg, flac i opus; rozdziały z m4b, ID3 i CUE oraz zagnieżdżone foldery CD1/CD2
+• Zmiana nazw rozdziałów i numerowanie po potwierdzeniu
+• Wznawianie od miejsca zatrzymania, inteligentne cofanie po pauzie
+• Prędkość odtwarzania, przewijanie, opcjonalne gesty przycisku słuchawek
+• Wyłącznik czasowy: minuty, koniec rozdziału lub książki, potrząśnij, aby przedłużyć; nocny harmonogram włącza go sam
+• Zakładka jednym dotknięciem z panelu powiadomień; notatki do zakładek i wyszukiwanie w nich
+• Wznawianie po ponownym podłączeniu słuchawek (opcjonalnie)
+• Kolejka odtwarzania dla kilku książek z rzędu
+• Odtwarzanie w tle, widżet na ekranie głównym, sterowanie z ekranu blokady i powiadomień
+• Skrót „Kontynuuj” na ikonie aplikacji i kafelek w szybkich ustawieniach do odtwarzania i pauzy
+
+BIBLIOTEKA
+• Półka z okładkami, wyszukiwaniem, tagami, seriami i przypiętymi ulubionymi
+• Siatka lub kompaktowa lista — wygodnie nawet przy setce książek
+• Import folderu, pojedynczych plików lub archiwum ZIP (otwórz je prosto z menedżera plików); własna okładka
+• Rozpoznaje „Autor - Tytuł” z nazw folderów, ekran autora
+• Szybkie wyszukiwanie wielu słów bez względu na wielkość liter, znaki diakrytyczne i apostrofy
+• Automatycznie dodaje nowe książki z wybranych folderów
+• Oznacza książki, których pliki zniknęły
+
+STATYSTYKI I DANE
+• Historia słuchania z wykresami tygodniowymi, miesięcznymi i rocznymi
+• Kopia zapasowa postępu do JSON lub na własny serwer WebDAV; synchronizacja telefonu z tabletem bez duplikatów książek
+• Codzienna automatyczna kopia do wybranego folderu (ostatnie 7)
+• Seria dni słuchania, cel dzienny i eksport historii do CSV
+• Eksport katalogu, zakładek i podsumowania książki do Markdown
+
+WYGODA
+• Motywy Noc, Papier i całkowicie czarny OLED
+• Układ przyjazny dużej czcionce i tabletom
+• 7 języków interfejsu: English, Українська, Polski, Deutsch, Español, Français, Português (Brasil)
+
+Prywatność. Bez analityki, trackerów i rejestracji. Aplikacja działa offline; sieć jest używana tylko wtedy, gdy sam włączysz kopię zapasową WebDAV.
+
+W tej wersji wszystkie funkcje Pro są odblokowane za darmo: pomijanie ciszy i pauz, sprzętowe wzmocnienie głośności (+6 dB), korektor głosu z korekcją wysokości tonu, automatyczna zakładka po odłączeniu słuchawek, lista postaci dla każdej książki oraz powtarzanie fragmentu A–B. W Google Play są jednorazowym zakupem — jeśli aplikacja Ci się podoba, w ten sposób możesz ją wesprzeć.
+
+BookVoices nie sprzedaje ani nie streamuje książek: odtwarza te, które już masz.

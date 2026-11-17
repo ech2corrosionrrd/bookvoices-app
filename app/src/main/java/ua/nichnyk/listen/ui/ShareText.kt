@@ -37,7 +37,8 @@ suspend fun Context.shareText(
             type = mimeType
             putExtra(Intent.EXTRA_SUBJECT, subject)
         }
-        if (text.toByteArray().size <= INLINE_TEXT_LIMIT_BYTES) {
+        val forceFile = fileName.endsWith(".csv", ignoreCase = true)
+        if (!forceFile && text.toByteArray().size <= INLINE_TEXT_LIMIT_BYTES) {
             intent.putExtra(Intent.EXTRA_TEXT, text)
         } else {
             val uri = withContext(Dispatchers.IO) {

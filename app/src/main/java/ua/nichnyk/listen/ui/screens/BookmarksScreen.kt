@@ -37,6 +37,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -76,7 +77,7 @@ fun BookmarksScreen(
     val undoLabel = stringResource(R.string.action_undo)
     val shareFailedMsg = stringResource(R.string.share_failed)
     var editingBookmark by remember { mutableStateOf<BookmarkWithBook?>(null) }
-    var editNoteText by remember { mutableStateOf("") }
+    var editNoteText by rememberSaveable { mutableStateOf("") }
 
     if (allItems.isEmpty() && query.isBlank()) {
         Column(

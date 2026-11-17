@@ -1,4 +1,4 @@
-﻿package ua.nichnyk.listen.billing
+package ua.nichnyk.listen.billing
 
 import android.app.Activity
 import android.content.Context
@@ -62,6 +62,9 @@ class ProEntitlementManager(
     val events = _events.receiveAsFlow()
 
     private var reconnectAttempt = 0
+
+    /** Токени покупок, для яких уже йде ланцюжок підтвердження. */
+    private val ackInFlight: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
 
     private val pendingPurchasesParams = PendingPurchasesParams.newBuilder()
         .enableOneTimeProducts()
@@ -189,10 +192,22 @@ class ProEntitlementManager(
             BillingClient.BillingResponseCode.USER_CANCELED -> {
                 _events.trySend(BillingEvent.UserCanceled)
             }
+            BillingClient.BillingResponseCode.ITEM_ALREADY_OWNED -> handleAlreadyOwned()
             else -> {
                 AppLog.w("BillingClient: purchase updated with error code=${result.responseCode}")
                 _events.trySend(BillingEvent.Error(result.debugMessage))
             }
+        }
+    }
+
+    /**
+     * Pro уже куплено (наприклад, після перевстановлення): це не помилка.
+     * Перечитуємо інвентаризацію — вона увімкне Pro й підтвердить покупку, а
+     * користувач побачить успіх замість повідомлення про помилку.
+     */
+    private fun handleAlreadyOwned() {
+        queryPurchasesAndNotify { found ->
+            _events.trySend(if (found) BillingEvent.PurchaseSuccess else BillingEvent.Unavailable)
         }
     }
 
@@ -218,13 +233,47 @@ class ProEntitlementManager(
 
         _isPro.value = true
         scope.launch { secrets.setProCached(proPurchase.purchaseToken) }
-        if (!proPurchase.isAcknowledged) {
-            val ackParams = AcknowledgePurchaseParams.newBuilder()
-                .setPurchaseToken(proPurchase.purchaseToken)
-                .build()
-            billingClient.acknowledgePurchase(ackParams) { ackResult ->
-                if (ackResult.responseCode != BillingClient.BillingResponseCode.OK) {
-                    AppLog.w("BillingClient: failed to acknowledge purchase: ${ackResult.debugMessage}")
+        // Один ланцюжок підтвердження на токен: processPurchases викликається з
+        // кількох місць (старт, відновлення, onPurchasesUpdated) і паралельні
+        // ланцюжки дублювали б запити й повтори.
+        if (!proPurchase.isAcknowledged && ackInFlight.add(proPurchase.purchaseToken)) {
+            acknowledge(proPurchase.purchaseToken, attempt = 1)
+        }
+    }
+
+    /**
+     * Play повертає кошти, якщо покупку не підтверджено за 3 дні, тож невдалу
+     * спробу повторюємо з наростаючою паузою. Якщо й це не допомогло — наступне
+     * підключення знову побачить непідтверджену покупку в [processPurchases].
+     */
+    private fun acknowledge(token: String, attempt: Int) {
+        val ackParams = AcknowledgePurchaseParams.newBuilder()
+            .setPurchaseToken(token)
+            .build()
+        billingClient.acknowledgePurchase(ackParams) { ackResult ->
+            if (ackResult.responseCode == BillingClient.BillingResponseCode.OK) {
+                ackInFlight.remove(token)
+                return@acknowledgePurchase
+            }
+            AppLog.w("BillingClient: failed to acknowledge purchase (attempt $attempt): ${ackResult.debugMessage}")
+            if (attempt >= MAX_ACK_ATTEMPTS) {
+                ackInFlight.remove(token)
+                return@acknowledgePurchase
+            }
+            scope.launch {
+                delay(ACK_RETRY_BASE_DELAY_MS * attempt)
+                if (!billingClient.isReady) {
+                    // Раніше повтор тут мовчки припинявся. Перепідключаємося й
+                    // даємо клієнту час піднятися.
+                    startConnection()
+                    delay(ACK_RECONNECT_WAIT_MS)
+                }
+                if (billingClient.isReady) {
+                    acknowledge(token, attempt + 1)
+                } else {
+                    // Токен звільняємо: наступне підключення побачить
+                    // непідтверджену покупку в processPurchases і почне заново.
+                    ackInFlight.remove(token)
                 }
             }
         }
@@ -252,13 +301,28 @@ class ProEntitlementManager(
         val result = billingClient.launchBillingFlow(activity, flowParams)
         if (result.responseCode != BillingClient.BillingResponseCode.OK) {
             AppLog.w("BillingClient: launchBillingFlow failed code=${result.responseCode}")
-            _events.trySend(BillingEvent.Unavailable)
+            when (result.responseCode) {
+                BillingClient.BillingResponseCode.ITEM_ALREADY_OWNED -> handleAlreadyOwned()
+                BillingClient.BillingResponseCode.USER_CANCELED ->
+                    _events.trySend(BillingEvent.UserCanceled)
+                BillingClient.BillingResponseCode.SERVICE_DISCONNECTED,
+                BillingClient.BillingResponseCode.SERVICE_UNAVAILABLE,
+                BillingClient.BillingResponseCode.BILLING_UNAVAILABLE,
+                BillingClient.BillingResponseCode.FEATURE_NOT_SUPPORTED,
+                BillingClient.BillingResponseCode.ITEM_UNAVAILABLE ->
+                    _events.trySend(BillingEvent.Unavailable)
+                else -> _events.trySend(BillingEvent.Error(result.debugMessage))
+            }
             return false
         }
         return true
     }
 
-    fun restorePurchases(onResult: (Boolean) -> Unit = {}) {
+    fun restorePurchases(callback: (Boolean) -> Unit = {}) {
+        // onBillingSetupFinished і onBillingServiceDisconnected можуть спрацювати обидва
+        // (або повторно після перепідключення) — колбек має відпрацювати рівно раз.
+        val done = java.util.concurrent.atomic.AtomicBoolean(false)
+        val onResult: (Boolean) -> Unit = { value -> if (done.compareAndSet(false, true)) callback(value) }
         if (!billingClient.isReady) {
             billingClient.startConnection(object : BillingClientStateListener {
                 override fun onBillingSetupFinished(result: BillingResult) {
@@ -298,29 +362,8 @@ class ProEntitlementManager(
         const val SKU_PRO_LIFETIME = "bookvoices_pro_lifetime"
         private const val MAX_RECONNECT_ATTEMPTS = 5
         private const val RECONNECT_BASE_DELAY_MS = 1_000L
+        private const val MAX_ACK_ATTEMPTS = 3
+        private const val ACK_RETRY_BASE_DELAY_MS = 2_000L
+        private const val ACK_RECONNECT_WAIT_MS = 3_000L
     }
-}
-
-/**
- * Що сказати користувачу після `onPurchasesUpdated` з непорожнім списком.
- *
- * Відкладена оплата (готівкою, з підтвердженням) — це ще не покупка: Pro вмикається
- * лише зі станом PURCHASED, тож «Дякуємо» тут було б неправдою.
- */
-internal fun purchaseEvent(paid: Boolean, pending: Boolean): BillingEvent? = when {
-    paid -> BillingEvent.PurchaseSuccess
-    pending -> BillingEvent.PurchasePending
-    else -> null
-}
-
-sealed interface BillingEvent {
-    data object PurchaseSuccess : BillingEvent
-
-    /** Оплата ще не підтверджена: Pro увімкнеться, коли Play пришле PURCHASED. */
-    data object PurchasePending : BillingEvent
-    data object UserCanceled : BillingEvent
-
-    /** Play не віддав деталей товару — купувати нема що. */
-    data object Unavailable : BillingEvent
-    data class Error(val message: String) : BillingEvent
 }

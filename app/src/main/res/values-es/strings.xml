@@ -119,7 +119,22 @@
     <string name="section_backup">Copia de seguridad</string>
     <string name="backup_desc">Guarda marcadores, etiquetas, historial y progreso en un archivo JSON. La restauración reemplaza la estantería actual (los archivos de audio se mantienen en su lugar). La cola y las carpetas de biblioteca se mantienen en este dispositivo.</string>
     <string name="btn_backup">Crear copia</string>
+    <string name="btn_backup_save">Guardar en archivo</string>
+    <string name="backup_save_failed">No se pudo guardar el archivo</string>
+    <string name="file_saved">Archivo guardado</string>
     <string name="btn_restore">Restaurar</string>
+    <string name="auto_backup_title">Copia automática en una carpeta</string>
+    <string name="auto_backup_desc">Una vez al día la app guarda una copia en la carpeta que elijas y conserva las 7 últimas. Elige una carpeta en la tarjeta de memoria o una que sincronice Google Drive u otra app, así tu progreso y marcadores sobrevivirán si pierdes el teléfono. Restaura con el botón de arriba.</string>
+    <string name="auto_backup_pick">Elegir carpeta</string>
+    <string name="auto_backup_change">Cambiar carpeta</string>
+    <string name="auto_backup_now">Copiar ahora</string>
+    <string name="auto_backup_off">Desactivar</string>
+    <string name="auto_backup_folder">Carpeta: %s</string>
+    <string name="auto_backup_last">Última copia: %s</string>
+    <string name="auto_backup_never">La primera copia aparecerá en un minuto</string>
+    <string name="auto_backup_failed">No se pudo guardar la copia. Puede que la carpeta se haya borrado o se perdiera el acceso: elige la carpeta de nuevo.</string>
+    <string name="auto_backup_saved">Copia guardada</string>
+    <string name="auto_backup_pick_failed">No se pudo acceder a esta carpeta</string>
     <string name="backup_restored_success">Estantería restaurada desde la copia de seguridad.</string>
     <string name="backup_restore_failed">Error al leer el archivo de copia de seguridad</string>
     <string name="section_cloud">Sincronización en la nube (WebDAV)</string>
@@ -143,6 +158,18 @@
 
     <string name="version_format">Versión %s</string>
     <string name="rate_app">Valorar BookVoices en Google Play</string>
+    <string name="share_log">Compartir registro de diagnóstico</string>
+    <string name="share_log_desc">Solo entradas de BookVoices, sin rutas de archivos. No se envía nada automáticamente.</string>
+    <string name="report_problem">Informar de un problema</string>
+    <string name="report_problem_desc">¿Algo no funciona? Escribe al desarrollador. Se adjunta un registro de diagnóstico sin títulos de libros ni rutas de archivos, y verás todo antes de enviarlo.</string>
+    <string name="report_by_email">Escribir un correo</string>
+    <string name="report_on_github">GitHub</string>
+    <string name="report_email_subject">BookVoices %1$s: problema</string>
+    <string name="report_email_body">Qué pasó:\n\n\nQué estabas haciendo justo antes:\n\n</string>
+    <string name="report_issue_title">Problema en BookVoices</string>
+    <string name="report_no_email_app">No se encontró ninguna app de correo. Prueba GitHub.</string>
+    <string name="report_no_browser">No se pudo abrir el navegador.</string>
+    <string name="shortcut_resume_long">Continuar «%1$s»</string>
     <string name="seconds_format">%d s</string>
     <string name="minutes_format">%d min</string>
     <string name="btn_start">Comenzar</string>
@@ -179,6 +206,21 @@
     <string name="new_book_title">Nuevo libro</string>
     <string name="chapter_word">Capítulo</string>
     <string name="chapter_number">Capítulo %1$d</string>
+    <string name="chapters_number_action">Numerar</string>
+    <string name="chapter_rename_hint">Mantén pulsado un capítulo para cambiarle el nombre</string>
+    <string name="chapter_rename_title">Cambiar nombre del capítulo</string>
+    <string name="chapters_number_confirm_title">¿Numerar los capítulos?</string>
+    <string name="chapters_numbered_none">Los capítulos ya están numerados</string>
+    <plurals name="chapters_number_confirm_msg">
+        <item quantity="one">Los nombres de los %1$d capítulos pasarán a ser «%2$s», «%3$s», etc. Los nombres antiguos no se guardan.</item>
+        <item quantity="many">Los nombres de los %1$d capítulos pasarán a ser «%2$s», «%3$s», etc. Los nombres antiguos no se guardan.</item>
+        <item quantity="other">Los nombres de los %1$d capítulos pasarán a ser «%2$s», «%3$s», etc. Los nombres antiguos no se guardan.</item>
+    </plurals>
+    <plurals name="chapters_numbered">
+        <item quantity="one">%d capítulo renombrado</item>
+        <item quantity="many">%d capítulos renombrados</item>
+        <item quantity="other">%d capítulos renombrados</item>
+    </plurals>
     <string name="demo_book_title">BookVoices. Introducción</string>
     <string name="demo_book_author">BookVoices</string>
     <string name="import_no_space">Espacio insuficiente para copiar el archivo</string>
@@ -205,10 +247,12 @@
 
     <plurals name="books_count">
         <item quantity="one">%d libro</item>
+        <item quantity="many">%d libros</item>
         <item quantity="other">%d libros</item>
     </plurals>
     <plurals name="chapters_count">
         <item quantity="one">%d capítulo</item>
+        <item quantity="many">%d capítulos</item>
         <item quantity="other">%d capítulos</item>
     </plurals>
     <string name="demo_track_spoken">Introducción. BookVoices</string>
@@ -217,6 +261,7 @@
     <string name="demo_tts_language">es-ES</string>
     <plurals name="import_added">
         <item quantity="one">%d libro añadido</item>
+        <item quantity="many">%d libros añadidos</item>
         <item quantity="other">%d libros añadidos</item>
     </plurals>
     <string name="import_added_with_skipped">%1$s, %2$d omitidos — ya existen</string>
@@ -233,6 +278,7 @@
 
     <plurals name="book_files_missing_count">
         <item quantity="one">Falta %1$d de %2$d archivo</item>
+        <item quantity="many">Faltan %1$d de %2$d archivos</item>
         <item quantity="other">Faltan %1$d de %2$d archivos</item>
     </plurals>
     <string name="shelf_books_of_total">%1$d de %2$d</string>
@@ -247,11 +293,13 @@
     <string name="append_empty">No se encontraron archivos de audio nuevos</string>
     <plurals name="append_added">
         <item quantity="one">%d capítulo añadido</item>
+        <item quantity="many">%d capítulos añadidos</item>
         <item quantity="other">%d capítulos añadidos</item>
     </plurals>
     <string name="scan_new_files_title">Nuevos capítulos encontrados</string>
     <plurals name="scan_new_files_body">
         <item quantity="one">%d archivo de audio nuevo en la carpeta del libro</item>
+        <item quantity="many">%d archivos de audio nuevos en la carpeta del libro</item>
         <item quantity="other">%d archivos de audio nuevos en la carpeta del libro</item>
     </plurals>
     <string name="scan_append_action">Añadir capítulos</string>
@@ -270,6 +318,7 @@
     <string name="scan_new_books_title">Libros nuevos encontrados</string>
     <plurals name="scan_new_books_body">
         <item quantity="one">%d libro nuevo en tus carpetas de biblioteca</item>
+        <item quantity="many">%d libros nuevos en tus carpetas de biblioteca</item>
         <item quantity="other">%d libros nuevos en tus carpetas de biblioteca</item>
     </plurals>
     <string name="scan_import_books_action">Añadir al estante</string>
@@ -334,11 +383,13 @@
     <string name="batch_delete">Eliminar seleccionados</string>
     <plurals name="batch_delete_confirm">
         <item quantity="one">¿Eliminar %d libro?</item>
+        <item quantity="many">¿Eliminar %d libros?</item>
         <item quantity="other">¿Eliminar %d libros?</item>
     </plurals>
     <string name="batch_add_to_queue">Añadir a la cola</string>
     <plurals name="batch_added_to_queue">
         <item quantity="one">%d libro añadido a la cola</item>
+        <item quantity="many">%d libros añadidos a la cola</item>
         <item quantity="other">%d libros añadidos a la cola</item>
     </plurals>
     <string name="series">Serie / Saga</string>
@@ -363,8 +414,8 @@
     <string name="export_catalog_exported_at">Exportado: %s</string>
     <string name="export_catalog_total_books">Total de libros: %d</string>
     <string name="export_catalog_total_duration">Duración total: %s</string>
-    <string name="auto_bookmark_bluetooth">Marcador automático al desconectar Bluetooth</string>
-    <string name="auto_bookmark_bluetooth_desc">Guarda automáticamente un marcador al desconectar el coche o los auriculares</string>
+    <string name="auto_bookmark_bluetooth">Marcador automático al desconectar los auriculares</string>
+    <string name="auto_bookmark_bluetooth_desc">Guarda un marcador cuando el audio se corta por Bluetooth o por auriculares con cable</string>
     <string name="resume_on_reconnect">Reanudar al reconectar los auriculares</string>
     <string name="resume_on_reconnect_desc">Tras una desconexión breve (hasta 15 minutos), continúa la reproducción cuando los auriculares o el coche se reconecten</string>
     <string name="bookmark_bluetooth_disconnected">Bluetooth desconectado a las %s</string>
@@ -376,7 +427,7 @@
     <string name="pro_lifetime_desc">Licencia premium de por vida sin cuotas mensuales</string>
     <string name="pro_benefit_skip_silence">Omisión dinámica de silencios y pausas</string>
     <string name="pro_benefit_volume_boost">Amplificador de volumen Volume Boost (+6 dB)</string>
-    <string name="pro_benefit_bluetooth">Marcador automático al desconectar Bluetooth</string>
+    <string name="pro_benefit_bluetooth">Marcador automático al desconectar los auriculares</string>
     <string name="pro_benefit_equalizer">Ecualizador de voz y corrección de tono</string>
     <string name="pro_benefit_characters">Lista de personajes para cada libro</string>
     <string name="pro_locked">💎 Disponible en Pro</string>
@@ -418,4 +469,19 @@
     <string name="mark_finished">Marcar como terminado</string>
     <string name="mark_unfinished">Quitar la marca de terminado</string>
     <string name="pro_benefit_pitch">Ajuste del tono de voz</string>
+    <string name="queue_move_up">Mover hacia arriba</string>
+    <string name="queue_move_down">Mover hacia abajo</string>
+    <string name="share_book_summary">Compartir resumen del libro</string>
+    <string name="change_cover">Cambiar portada</string>
+    <string name="export_history_csv">Exportar historial de escucha (CSV)</string>
+    <string name="stats_streak_current">Racha: %d d</string>
+    <string name="stats_streak_best">Récord: %d d</string>
+    <string name="daily_goal_title">Meta diaria</string>
+    <string name="daily_goal_off">Desactivada</string>
+    <string name="daily_goal_set">Establecer meta diaria</string>
+    <string name="daily_goal_progress">Hoy: %1$s / %2$s</string>
+    <string name="ab_repeat_title">Repetición A–B</string>
+    <string name="ab_repeat_waiting_b">A: %s → toca para B</string>
+    <string name="ab_repeat_active">A–B: %1$s – %2$s</string>
+    <string name="pro_benefit_ab_repeat">Repetición de fragmento A–B</string>
 </resources>

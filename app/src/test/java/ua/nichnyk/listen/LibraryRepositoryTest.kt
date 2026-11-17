@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import java.io.File
+import java.time.LocalDate
+import java.time.ZoneId
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -26,10 +28,17 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import ua.nichnyk.listen.data.AudioImporter
+import ua.nichnyk.listen.data.BookCharacterEntity
 import ua.nichnyk.listen.data.BookEntity
+import ua.nichnyk.listen.data.BookTagEntity
+import ua.nichnyk.listen.data.BookWithChapters
+import ua.nichnyk.listen.data.BookmarkEntity
 import ua.nichnyk.listen.data.BackupCodec
 import ua.nichnyk.listen.data.ChapterEntity
 import ua.nichnyk.listen.data.DailyListeningEntity
+import ua.nichnyk.listen.data.DeletedBookmarkEntity
+import ua.nichnyk.listen.data.DeletedCharacterEntity
+import ua.nichnyk.listen.data.DeletedTagEntity
 import ua.nichnyk.listen.data.CoverGenerator
 import ua.nichnyk.listen.data.DemoFactory
 import ua.nichnyk.listen.data.LibraryRepository
@@ -49,6 +58,7 @@ import ua.nichnyk.listen.data.SESSION_MERGE_GAP_MS
 // Звичайний Application, а не ListenApp: справжній піднімає AppContainer і планує
 // WebDAV-синхронізацію через WorkManager, якого в JVM-тесті ніхто не ініціалізував.
 @Config(sdk = [33], application = android.app.Application::class)
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class LibraryRepositoryTest {
 
     private lateinit var context: Context
@@ -113,6 +123,113 @@ class LibraryRepositoryTest {
                 ),
             ),
         )
+    }
+
+    // --- назви глав -----------------------------------------------------------
+
+    @Test
+    fun renameChapterUpdatesTitleAndBookmarkCopyAndReturnsOldName() = runTest {
+        insertBook("r")
+        db.library().upsertBookmark(BookmarkEntity("bm", "r", "r-0", "1", 500L, "", 1L))
+
+        val previous = repo.renameChapters("r", mapOf("r-0" to "  Пролог   перший "))
+
+        assertEquals(mapOf("r-0" to "1"), previous)
+        val after = db.library().getBook("r")!!
+        assertEquals("Пролог перший", after.chapters.single().title)
+        assertTrue("перейменування глави має ставити мітку часу книги", after.book.renamedAt > 0L)
+        assertEquals("Пролог перший", db.library().getBookmark("bm")!!.chapterTitle)
+    }
+
+    @Test
+    fun mergeBackupPropagatesNewerChapterTitlesWithoutTouchingLocalUris() = runTest {
+        insertFull(book("local", "Кобзар", "file:///local"))
+        db.library().upsertBookmark(BookmarkEntity("bm-local", "local", "local-c0", "Розділ 1", 500L, "нотатка", 1L))
+
+        val remote = book("remote", "Кобзар", "content://other").let {
+            it.copy(
+                book = it.book.copy(renamedAt = 5_000L),
+                chapters = listOf(
+                    ChapterEntity("remote-c0", "remote", 0, "Причинна", "content://other/01.mp3", 20_000L),
+                    ChapterEntity("remote-c1", "remote", 1, "Перебендя", "content://other/02.mp3", 30_000L),
+                ),
+            )
+        }
+        val json = BackupCodec.encode(books = listOf(remote), bookmarks = emptyList(), listening = emptyList())
+
+        assertTrue(repo.mergeBackupJson(json))
+
+        val merged = db.library().getBook("local")!!
+        assertEquals(5_000L, merged.book.renamedAt)
+        val chapters = merged.chapters.sortedBy { it.index }
+        assertEquals(listOf("Причинна", "Перебендя"), chapters.map { it.title })
+        assertEquals(listOf("local-c0", "local-c1"), chapters.map { it.id })
+        assertEquals(listOf("file:///local/01.mp3", "file:///local/02.mp3"), chapters.map { it.uri })
+        assertEquals("Причинна", db.library().getBookmark("bm-local")!!.chapterTitle)
+    }
+
+    @Test
+    fun mergeDoesNotConsumeChapterStampWhenCountsDiffer() = runTest {
+        insertFull(book("local", "Кобзар", "file:///local"))
+        val mismatched = book("local", "Кобзар", "content://other").let { source ->
+            source.copy(
+                book = source.book.copy(renamedAt = 5_000L),
+                chapters = source.chapters.map { it.copy(title = "Нова ${it.index}") } +
+                    ChapterEntity("local-c2", "local", 2, "Нова 2", "content://other/03.mp3", 10_000L),
+            )
+        }
+        assertTrue(repo.mergeBackupJson(BackupCodec.encode(listOf(mismatched), emptyList(), emptyList())))
+        val held = db.library().getBook("local")!!
+        assertEquals(0L, held.book.renamedAt)
+        assertEquals(listOf("Розділ 1", "Розділ 2"), held.chapters.sortedBy { it.index }.map { it.title })
+
+        val aligned = book("local", "Кобзар", "content://other").let { source ->
+            source.copy(
+                book = source.book.copy(renamedAt = 5_000L),
+                chapters = listOf(
+                    source.chapters[0].copy(title = "Причинна"),
+                    source.chapters[1].copy(title = "Перебендя"),
+                ),
+            )
+        }
+        assertTrue(repo.mergeBackupJson(BackupCodec.encode(listOf(aligned), emptyList(), emptyList())))
+        val after = db.library().getBook("local")!!
+        assertEquals(5_000L, after.book.renamedAt)
+        assertEquals(listOf("Причинна", "Перебендя"), after.chapters.sortedBy { it.index }.map { it.title })
+    }
+
+    @Test
+    fun mergeRedrawsGeneratedCoverWhenTitleChanges() = runTest {
+        val cover = File(context.filesDir, "covers/old.png").apply {
+            parentFile?.mkdirs()
+            writeBytes(byteArrayOf(1))
+        }
+        insertFull(
+            book("local", "Кобзар", "file:///local").let {
+                it.copy(book = it.book.copy(coverPath = cover.absolutePath))
+            },
+        )
+        val remote = book("local", "Гайдамаки", "file:///local").let {
+            it.copy(book = it.book.copy(renamedAt = 9_000L, author = "Шевченко"))
+        }
+        assertTrue(repo.mergeBackupJson(BackupCodec.encode(listOf(remote), emptyList(), emptyList())))
+        val after = db.library().getBook("local")!!
+        assertEquals("Гайдамаки", after.book.title)
+        assertEquals("Шевченко", after.book.author)
+        assertNotEquals(cover.absolutePath, after.book.coverPath)
+        assertTrue(covers.isGenerated(after.book.coverPath))
+        assertTrue(File(after.book.coverPath!!).exists())
+    }
+
+    @Test
+    fun renameChapterIgnoresBlankUnchangedAndForeignChapters() = runTest {
+        insertBook("a")
+        insertBook("b")
+        assertTrue(repo.renameChapters("a", mapOf("a-0" to "   ")).isEmpty())
+        assertTrue(repo.renameChapters("a", mapOf("a-0" to "1")).isEmpty())
+        // Глава іншої книги через цю книгу не перейменовується.
+        assertTrue(repo.renameChapters("a", mapOf("b-0" to "Чуже")).isEmpty())
+        assertEquals("1", db.library().getBook("b")!!.chapters.single().title)
     }
 
     // --- точкові оновлення книги -------------------------------------------
@@ -496,6 +613,33 @@ class LibraryRepositoryTest {
         assertEquals(3, sessions.size)
     }
 
+    /** Пауза коротша за вікно злиття, але вже інша доба — окрема сесія. */
+    @Test
+    fun pauseAcrossMidnightStartsNewSession() = runTest {
+        insertBook("b1", "Тіні", "Коцюбинський")
+        val zone = ZoneId.systemDefault()
+        val firstEnd = LocalDate.of(2026, 3, 15).atTime(23, 55).atZone(zone).toInstant().toEpochMilli()
+        db.library().appendSession(
+            newId = "before",
+            bookId = "b1",
+            bookTitle = "Тіні",
+            author = "Коцюбинський",
+            now = firstEnd,
+            deltaMs = 5 * 60_000L,
+        )
+        val secondEnd = LocalDate.of(2026, 3, 16).atTime(0, 20).atZone(zone).toInstant().toEpochMilli()
+        db.library().appendSession(
+            newId = "after",
+            bookId = "b1",
+            bookTitle = "Тіні",
+            author = "Коцюбинський",
+            now = secondEnd,
+            deltaMs = 15 * 60_000L,
+        )
+
+        assertEquals(2, db.library().getAllSessions().size)
+    }
+
     /** Довга перерва — нова сесія, навіть якщо книга та сама. */
     @Test
     fun longPauseStartsNewSession() = runTest {
@@ -674,4 +818,419 @@ class LibraryRepositoryTest {
         assertEquals(emptySet<String>(), repo.inaccessibleUris(emptyList()))
     }
 
+    /**
+     * Відновлення з резервної копії замінює полицю, тож обкладинки й копії аудіо від
+     * книг, яких у файлі немає, мають прибиратися з диска, а ті, що лишилися, — ні.
+     */
+    @Test
+    fun restoreBackupCleansUpOrphanedCoversAndAudioCopiesWhileKeepingSurvivedOnes() = runTest {
+        val imports = File(context.filesDir, "imports").apply { mkdirs() }
+        val keptCover = File(context.filesDir, "covers/kept.png").apply {
+            parentFile?.mkdirs()
+            writeBytes(ByteArray(8))
+        }
+        val keptAudio = File(imports, "kept.mp3").apply { writeBytes(ByteArray(8)) }
+        db.library().upsertBook(
+            BookEntity(
+                id = "kept", title = "Залишена", author = "А", coverPath = keptCover.absolutePath,
+                addedAt = 0L, lastPlayedAt = null, durationMs = 1000L, positionMs = 0L,
+                currentChapterIndex = 0, playbackSpeed = 1f, completed = false,
+            ),
+        )
+        db.library().upsertChapters(
+            listOf(
+                ChapterEntity(
+                    id = "kept-0", bookId = "kept", index = 0,
+                    title = "1", uri = keptAudio.toURI().toString(), durationMs = 1000L,
+                ),
+            ),
+        )
+        val backupJson = repo.exportBackupJson()
+
+        val goneCover = File(context.filesDir, "covers/gone.png").apply {
+            parentFile?.mkdirs()
+            writeBytes(ByteArray(8))
+        }
+        val goneAudio = File(imports, "gone.mp3").apply { writeBytes(ByteArray(8)) }
+        db.library().upsertBook(
+            BookEntity(
+                id = "gone", title = "Зникла", author = "Б", coverPath = goneCover.absolutePath,
+                addedAt = 0L, lastPlayedAt = null, durationMs = 1000L, positionMs = 0L,
+                currentChapterIndex = 0, playbackSpeed = 1f, completed = false,
+            ),
+        )
+        db.library().upsertChapters(
+            listOf(
+                ChapterEntity(
+                    id = "gone-0", bookId = "gone", index = 0,
+                    title = "1", uri = goneAudio.toURI().toString(), durationMs = 1000L,
+                ),
+            ),
+        )
+
+        assertTrue(repo.importBackupJson(backupJson))
+
+        assertTrue("обкладинку вцілілої книги стерто", keptCover.exists())
+        assertTrue("аудіо вцілілої книги стерто", keptAudio.exists())
+        assertFalse("обкладинка заміненої книги лишилася сиротою", goneCover.exists())
+        assertFalse("копія аудіо заміненої книги лишилася сиротою", goneAudio.exists())
+    }
+
+    /** Якщо дві книги ділять один файл або обкладинку, видалення першої не ламає другу. */
+    @Test
+    fun deleteBookPreservesSharedCoverAndAudioCopyStillReferencedByAnotherBook() = runTest {
+        val imports = File(context.filesDir, "imports").apply { mkdirs() }
+        val sharedCover = File(context.filesDir, "covers/shared.png").apply {
+            parentFile?.mkdirs()
+            writeBytes(ByteArray(8))
+        }
+        val sharedAudio = File(imports, "shared.mp3").apply { writeBytes(ByteArray(8)) }
+
+        for (id in listOf("b1", "b2")) {
+            db.library().upsertBook(
+                BookEntity(
+                    id = id, title = id, author = "А", coverPath = sharedCover.absolutePath,
+                    addedAt = 0L, lastPlayedAt = null, durationMs = 1000L, positionMs = 0L,
+                    currentChapterIndex = 0, playbackSpeed = 1f, completed = false,
+                ),
+            )
+            db.library().upsertChapters(
+                listOf(
+                    ChapterEntity(
+                        id = "$id-0", bookId = id, index = 0,
+                        title = "1", uri = sharedAudio.toURI().toString(), durationMs = 1000L,
+                    ),
+                ),
+            )
+        }
+
+        repo.deleteBook("b1")
+        assertTrue("обкладинка ще потрібна другій книзі", sharedCover.exists())
+        assertTrue("файл ще потрібен другій книзі", sharedAudio.exists())
+
+        repo.deleteBook("b2")
+        assertFalse("після останньої книги обкладинка має зникнути", sharedCover.exists())
+        assertFalse("після останньої книги копія має зникнути", sharedAudio.exists())
+    }
+
+    /**
+     * Та сама книга, імпортована на двох пристроях окремо, має різні UUID і різні
+     * локальні URI. Злиття з хмари переносить прогрес, закладки, мітки й персонажів
+     * у локальну книгу, не плодячи дублікат із чужими недоступними URI.
+     */
+    @Test
+    fun mergeBackupMatchesIndependentlyImportedBookByFingerprintInsteadOfDuplicating() = runTest {
+        db.library().upsertBook(
+            BookEntity(
+                id = "local-id",
+                title = "Тіні забутих предків",
+                author = "Коцюбинський",
+                coverPath = "/local/cover.png",
+                addedAt = 1_000L,
+                lastPlayedAt = 2_000L,
+                durationMs = 50_000L,
+                positionMs = 1_000L,
+                currentChapterIndex = 0,
+                playbackSpeed = 1f,
+                completed = false,
+            ),
+        )
+        db.library().upsertChapters(
+            listOf(
+                ChapterEntity("local-c0", "local-id", 0, "Розділ 1", "file:///local/01.mp3", 20_000L),
+                ChapterEntity("local-c1", "local-id", 1, "Розділ 2", "file:///local/02.mp3", 30_000L),
+            ),
+        )
+
+        val remoteBook = BookWithChapters(
+            book = BookEntity(
+                id = "remote-id",
+                title = "Тіні забутих предків",
+                author = "М. Коцюбинський",
+                coverPath = "/remote/cover.png",
+                addedAt = 1_500L,
+                lastPlayedAt = 50_000L,
+                durationMs = 50_000L,
+                positionMs = 14_000L,
+                currentChapterIndex = 1,
+                playbackSpeed = 1.25f,
+                completed = false,
+                notes = "Нотатка з планшета",
+            ),
+            chapters = listOf(
+                ChapterEntity("remote-c0", "remote-id", 0, "Розділ 1", "content://other/01.mp3", 20_000L),
+                ChapterEntity("remote-c1", "remote-id", 1, "Розділ 2", "content://other/02.mp3", 30_000L),
+            ),
+        )
+        val remoteJson = BackupCodec.encode(
+            books = listOf(remoteBook),
+            bookmarks = listOf(
+                BookmarkEntity(
+                    id = "bm-1",
+                    bookId = "remote-id",
+                    chapterId = "remote-c1",
+                    chapterTitle = "Розділ 2",
+                    positionMs = 12_000L,
+                    note = "Важливе місце",
+                    createdAt = 40_000L,
+                ),
+            ),
+            listening = emptyList(),
+            tombstones = emptyList(),
+            tags = listOf(BookTagEntity("remote-id", "класика")),
+            sessions = emptyList(),
+            characters = listOf(
+                BookCharacterEntity(
+                    id = "char-1",
+                    bookId = "remote-id",
+                    name = "Іван Палійчук",
+                    role = "головний герой",
+                    description = null,
+                    createdAt = 30_000L,
+                ),
+            ),
+        )
+
+        assertTrue(repo.mergeBackupJson(remoteJson))
+
+        val allBooks = db.library().getAllBooks()
+        assertEquals("дублікат із чужими URI не мав зʼявитися", 1, allBooks.size)
+        val merged = allBooks.single()
+        assertEquals("local-id", merged.book.id)
+        assertEquals(1, merged.book.currentChapterIndex)
+        assertEquals(14_000L, merged.book.positionMs)
+        assertEquals(1.25f, merged.book.playbackSpeed, 0.001f)
+        assertEquals("Нотатка з планшета", merged.book.notes)
+        assertEquals(
+            listOf("file:///local/01.mp3", "file:///local/02.mp3"),
+            merged.chapters.sortedBy { it.index }.map { it.uri },
+        )
+
+        val bookmark = db.library().getAllBookmarks().single()
+        assertEquals("local-id", bookmark.bookId)
+        assertEquals("local-c1", bookmark.chapterId)
+        assertEquals("Важливе місце", bookmark.note)
+
+        assertEquals(listOf("класика"), repo.getTagsForBook("local-id"))
+        val character = db.library().getAllCharacters().single()
+        assertEquals("local-id", character.bookId)
+        assertEquals("Іван Палійчук", character.name)
+    }
+
+    @Test
+    fun updateBookCoverBytesReplacesCoverAndDeletesOldFile() = runTest {
+        val oldCover = File(context.filesDir, "covers/old.png").apply {
+            parentFile?.mkdirs()
+            writeBytes(byteArrayOf(1, 2, 3))
+        }
+        db.library().upsertBook(
+            BookEntity(
+                id = "b-cover",
+                title = "Місто",
+                author = "Підмогильний",
+                coverPath = oldCover.absolutePath,
+                addedAt = 1_000L,
+                lastPlayedAt = null,
+                durationMs = 10_000L,
+                positionMs = 0L,
+                currentChapterIndex = 0,
+                playbackSpeed = 1f,
+                completed = false,
+            ),
+        )
+
+        val customBytes = byteArrayOf(9, 8, 7, 6)
+        assertTrue(repo.updateBookCoverBytes("b-cover", customBytes))
+
+        val updated = repo.getBook("b-cover")!!.book
+        assertFalse("старий файл обкладинки має бути прибраний", oldCover.exists())
+        val newCoverFile = File(updated.coverPath!!)
+        assertTrue("новий файл обкладинки має існувати", newCoverFile.exists())
+        assertTrue("новий файл обкладинки не має бути порожнім", newCoverFile.length() > 0L)
+        assertTrue(newCoverFile.name.endsWith(".jpg"))
+    }
+
+    @Test
+    fun exportBookSummaryMarkdownIncludesNotesCharactersAndBookmarksInChapterOrder() = runTest {
+        db.library().upsertBook(
+            BookEntity(
+                id = "b-md",
+                title = "Тигролови",
+                author = "Іван Багряний",
+                coverPath = null,
+                addedAt = 1_000L,
+                lastPlayedAt = 2_000L,
+                durationMs = 100_000L,
+                positionMs = 20_000L,
+                currentChapterIndex = 0,
+                playbackSpeed = 1f,
+                completed = false,
+                series = "Пригоди",
+                seriesOrder = 1f,
+                notes = "Улюблений роман",
+            ),
+        )
+        val ch1 = ChapterEntity("ch-1", "b-md", 0, "Частина перша", "file:///1.mp3", 50_000L)
+        val ch2 = ChapterEntity("ch-2", "b-md", 1, "Частина друга", "file:///2.mp3", 50_000L)
+        db.library().upsertChapters(listOf(ch1, ch2))
+        repo.addTag("b-md", "класика")
+        repo.addCharacter("b-md", "Григорій Многогрішний", "інженер", "Головний герой")
+        repo.addBookmark("b-md", ch2, 15_000L, "Друга закладка")
+        repo.addBookmark("b-md", ch1, 5_000L, "Перша закладка")
+
+        val md = repo.exportBookSummaryMarkdown("b-md")!!
+        assertTrue(md.contains("# Тигролови"))
+        assertTrue(md.contains("*Іван Багряний*"))
+        assertTrue(md.contains("Пригоди #1"))
+        assertTrue(md.contains("#класика"))
+        assertTrue(md.contains("Улюблений роман"))
+        assertTrue(md.contains("**Григорій Многогрішний** (інженер) — Головний герой"))
+        val idx1 = md.indexOf("Частина перша")
+        val idx2 = md.indexOf("Частина друга")
+        assertTrue("закладки у конспекті книги мають іти в порядку розділів", idx1 in 0 until idx2)
+    }
+
+    // --- злиття копії: крайні випадки --------------------------------------
+
+    private fun book(id: String, title: String, uriPrefix: String, lastPlayedAt: Long? = null) =
+        BookWithChapters(
+            book = BookEntity(
+                id = id, title = title, author = "Автор", coverPath = null,
+                addedAt = 1L, lastPlayedAt = lastPlayedAt, durationMs = 50_000L,
+                positionMs = 0L, currentChapterIndex = 0, playbackSpeed = 1f, completed = false,
+            ),
+            chapters = listOf(
+                ChapterEntity("$id-c0", id, 0, "Розділ 1", "$uriPrefix/01.mp3", 20_000L),
+                ChapterEntity("$id-c1", id, 1, "Розділ 2", "$uriPrefix/02.mp3", 30_000L),
+            ),
+        )
+
+    private suspend fun insertFull(b: BookWithChapters) {
+        db.library().upsertBook(b.book)
+        db.library().upsertChapters(b.chapters)
+    }
+
+    @Test
+    fun mergeBackupDoesNotMergeBooksWithSameTitleButDifferentChapters() = runTest {
+        insertFull(book("local", "Кобзар", "file:///local"))
+        val other = book("remote", "Кобзар", "content://other").let {
+            it.copy(chapters = it.chapters.map { c -> c.copy(title = "Інша глава ${c.index}", durationMs = c.durationMs + 5_000L) })
+        }
+
+        assertTrue(repo.mergeBackupJson(BackupCodec.encode(listOf(other), emptyList(), emptyList())))
+
+        assertEquals(
+            "різні книги з однаковою назвою не можна зливати",
+            setOf("local", "remote"),
+            db.library().getAllBooks().map { it.book.id }.toSet(),
+        )
+    }
+
+    @Test
+    fun mergeBackupMatchesEachLocalBookOnlyOnce() = runTest {
+        insertFull(book("local", "Кобзар", "file:///local"))
+        val a = book("remote-a", "Кобзар", "content://a", lastPlayedAt = 10L)
+        val b = book("remote-b", "Кобзар", "content://b", lastPlayedAt = 20L)
+
+        assertTrue(repo.mergeBackupJson(BackupCodec.encode(listOf(a, b), emptyList(), emptyList())))
+
+        val ids = db.library().getAllBooks().map { it.book.id }.toSet()
+        assertTrue("локальна книга лишилась", "local" in ids)
+        assertEquals("одна локальна книга поглинає лише одну віддалену", 2, ids.size)
+    }
+
+    @Test
+    fun mergeBackupAppliesRemoteTagTombstoneToFingerprintMatchedBook() = runTest {
+        insertFull(book("local", "Кобзар", "file:///local"))
+        repo.addTag("local", "класика")
+        val remote = book("remote", "Кобзар", "content://other")
+        val json = BackupCodec.encode(
+            books = listOf(remote),
+            bookmarks = emptyList(),
+            listening = emptyList(),
+            tagTombstones = listOf(DeletedTagEntity("remote", "класика", System.currentTimeMillis())),
+        )
+
+        assertTrue(repo.mergeBackupJson(json))
+
+        assertEquals(1, db.library().getAllBooks().size)
+        assertEquals(
+            "чужий надгробок мітки має діяти на локальну книгу через перенесений id",
+            emptyList<String>(),
+            repo.getTagsForBook("local"),
+        )
+    }
+
+    @Test
+    fun mergeBackupRemapsListeningSessionsToLocalBook() = runTest {
+        insertFull(book("local", "Кобзар", "file:///local"))
+        val remote = book("remote", "Кобзар", "content://other")
+        val session = ListeningSessionEntity("s-1", "remote", "Кобзар", "Автор", System.currentTimeMillis(), 60_000L)
+        val json = BackupCodec.encode(
+            books = listOf(remote),
+            bookmarks = emptyList(),
+            listening = emptyList(),
+            sessions = listOf(session),
+        )
+
+        assertTrue(repo.mergeBackupJson(json))
+
+        assertEquals("local", db.library().getAllSessions().single().bookId)
+    }
+
+    private fun mark(id: String, bookId: String, createdAt: Long) =
+        BookmarkEntity(id, bookId, "$bookId-c0", "Розділ 1", 1_000L, "нотатка", createdAt)
+
+    @Test
+    fun mergeBackupAppliesRemoteBookmarkTombstoneToFingerprintMatchedBook() = runTest {
+        insertFull(book("local", "Кобзар", "file:///local"))
+        db.library().upsertBookmark(mark("bm-1", "local", createdAt = 1_000L))
+        val json = BackupCodec.encode(
+            books = listOf(book("remote", "Кобзар", "content://other")),
+            bookmarks = emptyList(),
+            listening = emptyList(),
+            bookmarkTombstones = listOf(DeletedBookmarkEntity("bm-1", "remote", deletedAt = 2_000L)),
+        )
+
+        assertTrue(repo.mergeBackupJson(json))
+
+        assertEquals(1, db.library().getAllBooks().size)
+        assertTrue("закладку, стерту на іншому пристрої, прибрано", db.library().getAllBookmarks().isEmpty())
+    }
+
+    @Test
+    fun mergeBackupKeepsBookmarkCreatedAfterRemoteTombstone() = runTest {
+        insertFull(book("local", "Кобзар", "file:///local"))
+        db.library().upsertBookmark(mark("bm-1", "local", createdAt = 3_000L))
+        val json = BackupCodec.encode(
+            books = listOf(book("remote", "Кобзар", "content://other")),
+            bookmarks = emptyList(),
+            listening = emptyList(),
+            bookmarkTombstones = listOf(DeletedBookmarkEntity("bm-1", "remote", deletedAt = 2_000L)),
+        )
+
+        assertTrue(repo.mergeBackupJson(json))
+
+        assertEquals(
+            "створена після видалення — це нове додавання, воно виживає",
+            listOf("bm-1"),
+            db.library().getAllBookmarks().map { it.id },
+        )
+    }
+
+    @Test
+    fun mergeBackupAppliesRemoteCharacterTombstoneToFingerprintMatchedBook() = runTest {
+        insertFull(book("local", "Кобзар", "file:///local"))
+        db.library().upsertCharacter(BookCharacterEntity("ch-1", "local", "Тарас", null, null, createdAt = 1_000L))
+        val json = BackupCodec.encode(
+            books = listOf(book("remote", "Кобзар", "content://other")),
+            bookmarks = emptyList(),
+            listening = emptyList(),
+            characterTombstones = listOf(DeletedCharacterEntity("ch-1", "remote", deletedAt = 2_000L)),
+        )
+
+        assertTrue(repo.mergeBackupJson(json))
+
+        assertTrue("персонажа, прибраного на іншому пристрої, прибрано й тут", db.library().getAllCharacters().isEmpty())
+    }
 }
