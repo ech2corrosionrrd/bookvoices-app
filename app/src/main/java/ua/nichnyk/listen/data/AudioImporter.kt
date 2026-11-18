@@ -132,7 +132,14 @@ class AudioImporter(private val context: Context) {
                 }
             }?.first?.toString()
 
-            val audioEntries = rawEntries.filterNot { (uri, name) -> isImageName(name) || isImageMime(context.contentResolver.getType(uri)) }
+            val nonImage = rawEntries.filterNot { (uri, name) -> isImageName(name) || isImageMime(context.contentResolver.getType(uri)) }
+            // Непідтримувані формати відсіюємо до копіювання: глава з них не заграє.
+            val audioEntries = nonImage.filterNot { (uri, name) ->
+                isUnplayableAudio(name, runCatching { context.contentResolver.getType(uri) }.getOrNull())
+            }
+            if (audioEntries.isEmpty() && nonImage.isNotEmpty()) {
+                error(context.forAppLocale().getString(R.string.import_unsupported_format))
+            }
             val ordered = (if (audioEntries.isNotEmpty()) audioEntries else rawEntries)
                 .sortedWith { a, b -> naturalCompare(a.second, b.second) }
             val chapters = ordered.flatMapIndexed { index, (uri, name) ->
@@ -222,8 +229,12 @@ class AudioImporter(private val context: Context) {
         val audioFiles = mutableListOf<TreeEntry>()
         val imageFiles = mutableListOf<TreeEntry>()
         val cueFiles = mutableListOf<TreeEntry>()
-        collectTree(treeUri, rootId, relative = "", depth = 0, audio = audioFiles, images = imageFiles, cues = cueFiles)
-        if (audioFiles.isEmpty()) error(context.forAppLocale().getString(R.string.import_folder_empty))
+        val unplayable = mutableListOf<TreeEntry>()
+        collectTree(
+            treeUri, rootId, relative = "", depth = 0,
+            audio = audioFiles, images = imageFiles, cues = cueFiles, unplayable = unplayable,
+        )
+        if (audioFiles.isEmpty()) error(emptyFolderMessage(unplayable.isNotEmpty()))
 
         val bookFolders = findBookFolders(audioFiles.map { it.relativePath })
         val ordered = audioFiles.sortedWith { a, b -> naturalCompare(a.relativePath, b.relativePath) }
@@ -360,8 +371,12 @@ class AudioImporter(private val context: Context) {
         val audio = mutableListOf<TreeEntry>()
         val images = mutableListOf<TreeEntry>()
         val cues = mutableListOf<TreeEntry>()
-        collectTree(treeUri, folderDocId, relative = "", depth = 0, audio = audio, images = images, cues = cues)
-        if (audio.isEmpty()) error(context.forAppLocale().getString(R.string.import_folder_empty))
+        val unplayable = mutableListOf<TreeEntry>()
+        collectTree(
+            treeUri, folderDocId, relative = "", depth = 0,
+            audio = audio, images = images, cues = cues, unplayable = unplayable,
+        )
+        if (audio.isEmpty()) error(emptyFolderMessage(unplayable.isNotEmpty()))
         val ordered = audio.sortedWith { a, b -> naturalCompare(a.relativePath, b.relativePath) }
         val copied = java.util.Collections.synchronizedList(mutableListOf<File>())
         val done = java.util.concurrent.atomic.AtomicInteger(0)
@@ -461,6 +476,7 @@ class AudioImporter(private val context: Context) {
         audio: MutableList<TreeEntry>,
         images: MutableList<TreeEntry>,
         cues: MutableList<TreeEntry>? = null,
+        unplayable: MutableList<TreeEntry>? = null,
     ) {
         if (depth > 8) return
         coroutineContext.ensureActive()
@@ -472,9 +488,10 @@ class AudioImporter(private val context: Context) {
                 entry.isDirectory -> {
                     val childId = runCatching { DocumentsContract.getDocumentId(entry.uri) }.getOrNull()
                     if (childId != null) {
-                        collectTree(treeUri, childId, entry.relativePath, depth + 1, audio, images, cues)
+                        collectTree(treeUri, childId, entry.relativePath, depth + 1, audio, images, cues, unplayable)
                     }
                 }
+                isUnplayableAudio(entry.name, entry.mime) -> unplayable?.add(entry)
                 isAudioMime(entry.mime) || isAudioName(entry.name) -> audio += entry
                 isImageMime(entry.mime) || isImageName(entry.name) -> images += entry
                 isCueName(entry.name) -> cues?.add(entry)
@@ -920,6 +937,12 @@ class AudioImporter(private val context: Context) {
         return uri.lastPathSegment
     }
 
+    /** Порожня тека й тека лише з непідтримуваними форматами — різні поради слухачу. */
+    private fun emptyFolderMessage(onlyUnplayable: Boolean): String =
+        context.forAppLocale().getString(
+            if (onlyUnplayable) R.string.import_unsupported_format else R.string.import_folder_empty,
+        )
+
     private fun isAudioMime(uri: Uri): Boolean {
         val mime = runCatching { context.contentResolver.getType(uri) }.getOrNull() ?: return false
         return isAudioMime(mime)
@@ -942,7 +965,23 @@ class AudioImporter(private val context: Context) {
         /** Запас понад розмір файла, щоб не заповнити сховище під нуль. */
         private const val FREE_SPACE_MARGIN = 32L * 1024 * 1024
 
-        private val AUDIO_EXT = setOf("mp3", "m4a", "m4b", "aac", "ogg", "opus", "flac", "wav", "wma", "mp4")
+        private val AUDIO_EXT = setOf("mp3", "m4a", "m4b", "aac", "ogg", "opus", "flac", "wav", "mp4")
+
+        /**
+         * Аудіо, якого ExoPlayer без додаткових розширень не відтворює: WMA/ASF, APE, WavPack,
+         * MIDI, RealAudio, DSD, Musepack. Раніше `wma` стояло серед аудіо, а будь-який
+         * MIME «audio/…» приймався як аудіо, — і такі файли ставали главами, які не грають.
+         */
+        private val UNPLAYABLE_EXT = setOf("wma", "asf", "ape", "wv", "mid", "midi", "ra", "rm", "dsf", "dff", "mpc")
+        private val UNPLAYABLE_MIME = setOf(
+            "audio/x-ms-wma", "video/x-ms-asf", "audio/x-ape", "audio/ape", "audio/x-wavpack",
+            "audio/midi", "audio/x-midi", "audio/sp-midi", "audio/x-pn-realaudio", "audio/vnd.rn-realaudio",
+            "audio/x-musepack", "audio/x-dsf", "audio/x-dff",
+        )
+
+        fun isUnplayableAudio(name: String?, mime: String?): Boolean =
+            name?.substringAfterLast('.', "")?.lowercase() in UNPLAYABLE_EXT ||
+                mime?.lowercase() in UNPLAYABLE_MIME
         private val IMAGE_EXT = setOf("jpg", "jpeg", "png", "webp", "bmp")
 
         fun isImageMime(mime: String?): Boolean {

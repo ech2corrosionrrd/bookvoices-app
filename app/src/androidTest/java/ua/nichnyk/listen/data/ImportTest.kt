@@ -6,6 +6,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.io.File
+import ua.nichnyk.listen.forAppLocale
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -182,6 +183,26 @@ class ImportTest {
         assertNotNull("очікувалась помилка", failure)
         assertEquals(context.getString(ua.nichnyk.listen.R.string.import_zip_no_audio), failure!!.message)
         assertEquals(before, importsDir.listFiles()?.size ?: 0)
+    }
+
+    /**
+     * WMA Android без розширень не відтворює. Раніше такий файл ставав главою, яка не грає;
+     * тепер — зрозуміла відмова, а поряд із нормальним аудіо WMA просто пропускається.
+     */
+    @Test
+    fun wmaIsRejectedWithFormatMessageAndSkippedNextToPlayableAudio() = runBlocking {
+        val wma = File(workDir, "Глава 1.wma").apply { writeBytes(ByteArray(4096)) }.toUri()
+
+        val failure = runCatching { repo.importUris(listOf(wma)) }.exceptionOrNull()
+        assertNotNull("очікувалась помилка", failure)
+        assertEquals(
+            context.forAppLocale().getString(ua.nichnyk.listen.R.string.import_unsupported_format),
+            failure!!.message,
+        )
+
+        val outcome = repo.importUris(listOf(wav("01.wav"), File(workDir, "02.wma").apply { writeBytes(ByteArray(4096)) }.toUri()))
+        val book = db.library().getBook(outcome.single!!.id)!!
+        assertEquals(listOf("01"), book.chapters.map { it.title })
     }
 
     /**

@@ -106,7 +106,7 @@
     <string name="shake_sleep">Schütteln zum Verlängern</string>
     <string name="shake_sleep_desc">Telefon schütteln, um +10 Min zum Timer hinzuzufügen</string>
     <string name="night_timer">Nächtlicher Schlaftimer</string>
-    <string name="night_timer_desc">Startest du die Wiedergabe in den gewählten Stunden, startet der Schlaftimer automatisch</string>
+    <string name="night_timer_desc">Wenn Sie die Wiedergabe in den gewählten Stunden starten, startet der Schlaftimer automatisch</string>
     <string name="night_timer_from">Von</string>
     <string name="night_timer_to">Bis</string>
     <string name="night_timer_length">Timer-Dauer</string>
@@ -124,7 +124,7 @@
     <string name="file_saved">Datei gespeichert</string>
     <string name="btn_restore">Wiederherstellen</string>
     <string name="auto_backup_title">Automatische Sicherung in einen Ordner</string>
-    <string name="auto_backup_desc">Einmal täglich speichert die App eine Sicherung im gewählten Ordner und behält die letzten 7. Wähle einen Ordner auf der Speicherkarte oder einen, den Google Drive oder eine andere App synchronisiert – dann überstehen Fortschritt und Lesezeichen den Verlust des Handys. Wiederherstellen mit der Schaltfläche oben.</string>
+    <string name="auto_backup_desc">Einmal täglich speichert die App eine Sicherung im gewählten Ordner und behält die letzten 7. Wählen Sie einen Ordner auf der Speicherkarte oder einen, den Google Drive oder eine andere App synchronisiert – dann überstehen Fortschritt und Lesezeichen den Verlust des Handys. Wiederherstellen mit der Schaltfläche oben.</string>
     <string name="auto_backup_pick">Ordner wählen</string>
     <string name="auto_backup_change">Ordner ändern</string>
     <string name="auto_backup_now">Jetzt sichern</string>
@@ -161,13 +161,13 @@
     <string name="share_log">Diagnoseprotokoll teilen</string>
     <string name="share_log_desc">Nur Einträge von BookVoices, ohne Dateipfade. Es wird nichts automatisch gesendet.</string>
     <string name="report_problem">Problem melden</string>
-    <string name="report_problem_desc">Funktioniert etwas nicht? Schreib dem Entwickler. Ein Diagnoseprotokoll ohne Buchtitel und Dateipfade wird angehängt, und du siehst alles vor dem Senden.</string>
+    <string name="report_problem_desc">Funktioniert etwas nicht? Schreiben Sie dem Entwickler. Ein Diagnoseprotokoll ohne Buchtitel und Dateipfade wird angehängt, und Sie sehen alles vor dem Senden.</string>
     <string name="report_by_email">E-Mail schreiben</string>
     <string name="report_on_github">GitHub</string>
     <string name="report_email_subject">BookVoices %1$s: Problem</string>
-    <string name="report_email_body">Was ist passiert:\n\n\nWas hast du kurz davor gemacht:\n\n</string>
+    <string name="report_email_body">Was ist passiert:\n\n\nWas haben Sie kurz davor gemacht:\n\n</string>
     <string name="report_issue_title">Problem in BookVoices</string>
-    <string name="report_no_email_app">Keine E-Mail-App gefunden. Versuche GitHub.</string>
+    <string name="report_no_email_app">Keine E-Mail-App gefunden. Versuchen Sie es über GitHub.</string>
     <string name="report_no_browser">Browser konnte nicht geöffnet werden.</string>
     <string name="shortcut_resume_long">„%1$s“ fortsetzen</string>
     <string name="seconds_format">%d s</string>
@@ -196,6 +196,7 @@
     <string name="unknown_author">Unbekannter Autor</string>
     <string name="import_folder_failed">Ordner konnte nicht geöffnet werden</string>
     <string name="import_folder_empty">Keine Audiodateien im Ordner gefunden</string>
+    <string name="import_unsupported_format">Dieses Format kann nicht abgespielt werden (WMA, APE, WavPack, MIDI u. Ä.). Wandeln Sie die Dateien in mp3 oder m4b um.</string>
     <string name="import_audio_failed">Audiodatei konnte nicht gelesen werden</string>
     <string name="import_file_failed">Datei konnte nicht gelesen werden</string>
     <string name="import_cancelled">Import abgebrochen</string>
@@ -269,7 +270,7 @@
     <string name="relink_partial">%1$d von %2$d Dateien verknüpft</string>
     <string name="relink_failed">In diesem Ordner wurden keine passenden Dateien gefunden</string>
     <string name="book_files_gone_label">Dateien fehlen</string>
-    <string name="book_files_gone_body">Die Dateien dieses Buchs sind nicht mehr verfügbar. Fortschritt und Lesezeichen bleiben erhalten, bis du das Buch entfernst.</string>
+    <string name="book_files_gone_body">Die Dateien dieses Buchs sind nicht mehr verfügbar. Fortschritt und Lesezeichen bleiben erhalten, bis Sie das Buch entfernen.</string>
 
     <plurals name="book_files_missing_count">
         <item quantity="one">%1$d von %2$d Datei fehlt</item>

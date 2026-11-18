@@ -31,7 +31,7 @@ gradlew.bat :app:bundleRelease -PreleaseTag=vX.Y.Z
 
 Без `keystore.properties` release збереться непідписаним.
 
-### Збірка FOSS (F-Droid / IzzyOnDroid)
+### Збірка FOSS (GitHub Releases / Obtainium)
 
 ```sh
 ./gradlew :app:assembleRelease -Pfoss=true -PreleaseTag=vX.Y.Z

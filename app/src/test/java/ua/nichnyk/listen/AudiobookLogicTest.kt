@@ -332,6 +332,14 @@ class AudiobookLogicTest {
         assertTrue(ua.nichnyk.listen.data.AudioImporter.isAudioName("book.m4b"))
         assertTrue(ua.nichnyk.listen.data.AudioImporter.isAudioName("track.flac"))
         assertFalse(ua.nichnyk.listen.data.AudioImporter.isAudioName("cover.jpeg"))
+        // WMA Android без розширень не відтворює — глава з нього не заграла б.
+        assertFalse(ua.nichnyk.listen.data.AudioImporter.isAudioName("Глава 1.wma"))
+        assertTrue(ua.nichnyk.listen.data.AudioImporter.isUnplayableAudio("Глава 1.WMA", null))
+        assertTrue(ua.nichnyk.listen.data.AudioImporter.isUnplayableAudio("book", "audio/x-ms-wma"))
+        assertTrue(ua.nichnyk.listen.data.AudioImporter.isUnplayableAudio("album.ape", "audio/x-ape"))
+        assertFalse(ua.nichnyk.listen.data.AudioImporter.isUnplayableAudio("01.mp3", "audio/mpeg"))
+        assertFalse(ua.nichnyk.listen.data.AudioImporter.isUnplayableAudio("book.m4b", null))
+        assertFalse(ua.nichnyk.listen.data.AudioImporter.isUnplayableAudio(null, null))
 
         assertTrue(ua.nichnyk.listen.data.AudioImporter.isImageMime("image/jpeg"))
         assertTrue(ua.nichnyk.listen.data.AudioImporter.isImageMime("image/png"))

@@ -196,6 +196,7 @@
     <string name="unknown_author">Невідомий автор</string>
     <string name="import_folder_failed">Не вдалося відкрити папку</string>
     <string name="import_folder_empty">У папці немає аудіофайлів</string>
+    <string name="import_unsupported_format">Цей формат не відтворюється (WMA, APE, WavPack, MIDI тощо). Перетворіть файли на mp3 або m4b.</string>
     <string name="import_audio_failed">Не вдалося прочитати аудіо</string>
     <string name="import_file_failed">Не вдалося прочитати файл</string>
     <string name="import_cancelled">Імпорт скасовано</string>

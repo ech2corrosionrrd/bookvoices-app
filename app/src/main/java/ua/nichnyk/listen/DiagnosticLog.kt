@@ -32,6 +32,12 @@ object DiagnosticLog {
     private val pathPatterns = listOf(
         Regex("""(content|file)://$PATH_TAIL""", RegexOption.MULTILINE),
         Regex("""(/storage|/sdcard|/mnt|/data/user|/data/data)/$PATH_TAIL""", RegexOption.MULTILINE),
+        // Адреса WebDAV: у шляху Nextcloud — логін (`/dav/files/<логін>/`).
+        Regex("""https?://$PATH_TAIL""", RegexOption.MULTILINE),
+        // Id документа SAF без `content://`: системні повідомлення на кшталт «Failed to
+        // determine if primary:Книги/Назва/01.mp3 is child of …». Том — `primary`, `home`
+        // або id картки пам'яті `1A2B-3C4D`.
+        Regex("""(?<![\w/])(primary|home|[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}):(?=\S)$PATH_TAIL""", RegexOption.MULTILINE),
     )
 
     /** Прибирає URI й шляхи до файлів, лишаючи тип помилки й місце. */

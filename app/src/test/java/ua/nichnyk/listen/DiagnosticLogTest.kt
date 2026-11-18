@@ -29,6 +29,28 @@ class DiagnosticLogTest {
     }
 
     @Test
+    fun redactRemovesBareSafDocumentId() {
+        // ExternalStorageProvider пише id документа без content:// — назва книги лишалась.
+        val line = "IllegalArgumentException: Failed to determine if " +
+            "primary:Audiobooks/Тіні забутих предків/01.mp3 is child of primary:Audiobooks"
+        val out = DiagnosticLog.redact(line)
+        assertFalse(out, out.contains("Тіні"))
+        assertTrue(out, out.startsWith("IllegalArgumentException: Failed to determine if <path>"))
+        // Карта пам'яті має id тому на кшталт 1A2B-3C4D.
+        val sd = "FileNotFoundException: 1A2B-3C4D:Книги/Кобзар.m4b: open failed"
+        assertEquals("FileNotFoundException: <path>: open failed", DiagnosticLog.redact(sd))
+    }
+
+    @Test
+    fun redactRemovesWebDavUrlWithLogin() {
+        val line = "W/BookVoices: WebDavSync: java.io.IOException: 401 for " +
+            "https://cloud.example.com/remote.php/dav/files/olena.k/bookvoices/bookvoices.json"
+        val out = DiagnosticLog.redact(line)
+        assertFalse(out, out.contains("olena.k"))
+        assertTrue(out, out.endsWith("401 for <path>"))
+    }
+
+    @Test
     fun redactKeepsStackFramesUntouched() {
         val frame = "\tat ua.nichnyk.listen.playback.PlayerManager.play(PlayerManager.kt:120)"
         assertEquals(frame, DiagnosticLog.redact(frame))

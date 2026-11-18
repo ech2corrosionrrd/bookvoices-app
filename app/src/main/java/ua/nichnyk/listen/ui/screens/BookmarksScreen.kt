@@ -46,6 +46,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import ua.nichnyk.listen.ui.theme.Spacing
 import ua.nichnyk.listen.ui.theme.CardShape
 import ua.nichnyk.listen.R
@@ -118,7 +119,17 @@ fun BookmarksScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text(stringResource(R.string.bookmarks_title), style = MaterialTheme.typography.displayMedium)
+                    // Один рядок, що стискається: на вузькому телефоні з великим шрифтом заголовок
+                    // інакше ламався посеред слова («Setti / ngs»), як колись «BookV / oices» на полиці.
+                    Text(
+                        stringResource(R.string.bookmarks_title),
+                        style = MaterialTheme.typography.displayMedium,
+                        maxLines = 1,
+                        autoSize = androidx.compose.foundation.text.TextAutoSize.StepBased(
+                            minFontSize = 10.sp,
+                            maxFontSize = MaterialTheme.typography.displayMedium.fontSize,
+                        ),
+                    )
                 }
                 IconButton(onClick = {
                     scope.launch {

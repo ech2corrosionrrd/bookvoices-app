@@ -10,6 +10,8 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.core.net.toUri
 import androidx.test.ext.junit.rules.ActivityScenarioRule
@@ -123,6 +125,9 @@ class LargeFontLayoutTest {
         val broken = mutableListOf<String>()
         compose.runOnUiThread {
             for (node in nodes) {
+                // Виміряні, але не розміщені вузли (межі 0×0: Compose вимірює картку статистики
+                // з вузькими обмеженнями для intrinsic-розміру) користувач не бачить.
+                if (node.boundsInRoot.isEmpty) continue
                 val results = mutableListOf<TextLayoutResult>()
                 node.config[SemanticsActions.GetTextLayoutResult].action?.invoke(results)
                 val layout = results.firstOrNull() ?: continue
@@ -182,7 +187,14 @@ class LargeFontLayoutTest {
         assertNoBrokenWords("Полиця")
 
         // Екран книги: кнопки «Старт / Далі / Персонажі / Нотатки».
-        compose.onNodeWithText("Главный инженер 2_[Sibiryak]").performClick()
+        // На вузькому екрані з великим шрифтом картка книги нижче краю — спершу прокрутити.
+        runCatching {
+            compose.onAllNodes(androidx.compose.ui.test.hasScrollToNodeAction())[0]
+                .performScrollToNode(androidx.compose.ui.test.hasText("Главный инженер 2_[Sibiryak]"))
+        }
+        // Семантичний клік, а не дотик: на вузькому екрані кнопка «Додати» може перекривати картку.
+        compose.onNodeWithText("Главный инженер 2_[Sibiryak]")
+            .performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
         awaitText(str(R.string.btn_start))
         assertNoBrokenWords("Екран книги")
 

@@ -67,6 +67,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.documentfile.provider.DocumentFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -191,7 +192,17 @@ fun SettingsScreen(
             .padding(horizontal = Spacing.xl, vertical = Spacing.xl)
             .padding(bottom = 100.dp),
     ) {
-        Text(stringResource(R.string.settings_title), style = MaterialTheme.typography.displayMedium)
+        // Один рядок, що стискається: на вузькому телефоні з великим шрифтом заголовок
+        // інакше ламався посеред слова («Setti / ngs»), як колись «BookV / oices» на полиці.
+        Text(
+            stringResource(R.string.settings_title),
+            style = MaterialTheme.typography.displayMedium,
+            maxLines = 1,
+            autoSize = androidx.compose.foundation.text.TextAutoSize.StepBased(
+                minFontSize = 10.sp,
+                maxFontSize = MaterialTheme.typography.displayMedium.fontSize,
+            ),
+        )
         Text(stringResource(R.string.settings_subtitle), color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(Spacing.l))
 

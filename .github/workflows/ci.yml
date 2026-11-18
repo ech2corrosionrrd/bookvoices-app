@@ -165,6 +165,9 @@ jobs:
           api-level: ${{ matrix.api-level }}
           arch: x86_64
           disk-size: 4096M
+          # Real phone size (411 dp), like the local AVDs. Without a profile the AVD is 320 dp,
+          # where LargeFontLayoutTest at 200% font cannot fit even single words.
+          profile: pixel_6
           disable-animations: true
           script: ./gradlew connectedDebugAndroidTest --no-daemon
 

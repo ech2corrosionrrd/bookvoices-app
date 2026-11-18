@@ -196,6 +196,7 @@
     <string name="unknown_author">Autor desconocido</string>
     <string name="import_folder_failed">No se pudo abrir la carpeta</string>
     <string name="import_folder_empty">La carpeta no contiene archivos de audio</string>
+    <string name="import_unsupported_format">Este formato no se puede reproducir (WMA, APE, WavPack, MIDI y similares). Convierte los archivos a mp3 o m4b.</string>
     <string name="import_audio_failed">No se pudo leer el archivo de audio</string>
     <string name="import_file_failed">No se pudo leer el archivo</string>
     <string name="import_cancelled">Importación cancelada</string>

@@ -255,7 +255,18 @@ fun LibraryScreen(
                     }
                 }
             } else {
-                Text(greetingLine(), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                // Один рядок, що стискається: на вузькому телефоні з великим шрифтом
+                // «Good afternoon» інакше ламалось посеред слова («after / noon»).
+                Text(
+                    greetingLine(),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                    autoSize = androidx.compose.foundation.text.TextAutoSize.StepBased(
+                        minFontSize = 8.sp,
+                        maxFontSize = MaterialTheme.typography.labelLarge.fontSize,
+                    ),
+                )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (isSearching || query.isNotEmpty()) {
                         TextField(
