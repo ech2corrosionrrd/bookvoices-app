@@ -34,6 +34,8 @@ object ShelfQuery {
             val matchesFilter = when (filter) {
                 LibraryFilter.All -> true
                 LibraryFilter.Listening -> item.book.lastPlayedAt != null && !item.book.completed
+                // Доповнення до «Слухаю»: жодного разу не вмикали й не позначили завершеною.
+                LibraryFilter.NotStarted -> item.book.lastPlayedAt == null && !item.book.completed
                 LibraryFilter.Finished -> item.book.completed
                 LibraryFilter.Unavailable -> item.book.id in missingBookIds
             }

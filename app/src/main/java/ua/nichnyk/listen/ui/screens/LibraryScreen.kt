@@ -383,6 +383,7 @@ fun LibraryScreen(
                     val label = when (item) {
                         LibraryFilter.All -> stringResource(R.string.filter_all)
                         LibraryFilter.Listening -> stringResource(R.string.filter_listening)
+                        LibraryFilter.NotStarted -> stringResource(R.string.filter_not_started)
                         LibraryFilter.Finished -> stringResource(R.string.filter_finished)
                         LibraryFilter.Unavailable -> stringResource(R.string.filter_unavailable)
                     }

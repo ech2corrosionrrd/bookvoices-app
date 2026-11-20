@@ -13,6 +13,7 @@
     <string name="clear_search_text">Effacer la recherche</string>
     <string name="filter_all">Tous</string>
     <string name="filter_listening">En cours</string>
+    <string name="filter_not_started">Pas commencés</string>
     <string name="filter_finished">Terminés</string>
     <string name="filter_unavailable">Fichiers manquants</string>
     <string name="sort_last_played">Récents</string>
@@ -180,6 +181,7 @@
     <string name="nothing_found_title">Aucun résultat trouvé</string>
     <string name="nothing_found_query">Aucun livre trouvé pour « %s »</string>
     <string name="nothing_found_listening">Aucun livre en cours d\'écoute</string>
+    <string name="nothing_found_not_started">Aucun livre non commencé</string>
     <string name="nothing_found_finished">Aucun livre terminé</string>
     <string name="import_scanning">Analyse du dossier…</string>
     <string name="import_progress">Importation… %1$d / %2$d</string>

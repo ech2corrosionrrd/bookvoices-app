@@ -698,6 +698,7 @@ fun EmptyFilter(
         val message = when {
             query.isNotBlank() -> stringResource(R.string.nothing_found_query, query)
             filter == LibraryFilter.Listening -> stringResource(R.string.nothing_found_listening)
+            filter == LibraryFilter.NotStarted -> stringResource(R.string.nothing_found_not_started)
             filter == LibraryFilter.Finished -> stringResource(R.string.nothing_found_finished)
             filter == LibraryFilter.Unavailable -> stringResource(R.string.nothing_found_unavailable)
             // Мітка, серія або їх поєднання — назвати конкретний чіп тут нема як,

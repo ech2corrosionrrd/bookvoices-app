@@ -61,6 +61,32 @@ class AudioExperienceAndShelfTest {
         assertEquals(listOf("4", "2", "3", "1"), sorted.map { it.book.id })
     }
 
+    /**
+     * «Не почато», «Слухаю» і «Завершені» ділять полицю без перетинів і без залишку:
+     * кожна книга потрапляє рівно в одну з трьох вкладок.
+     */
+    @Test
+    fun shelfQuery_notStartedListeningFinishedSplitShelf() {
+        val fresh = makeBook("new", "Fresh", "A")
+        val listening = makeBook("cur", "Current", "B", lastPlayedAt = 1_000L)
+        val finished = makeBook("done", "Done", "C", lastPlayedAt = 2_000L)
+            .let { it.copy(book = it.book.copy(completed = true)) }
+        // Позначили завершеною, жодного разу не вмикавши, — це «Завершені», не «Не почато».
+        val markedDone = makeBook("mark", "Marked", "D")
+            .let { it.copy(book = it.book.copy(completed = true)) }
+        val list = listOf(fresh, listening, finished, markedDone)
+
+        fun ids(f: LibraryFilter) = ShelfQuery.apply(list, "", f, BookSortOrder.Title).map { it.book.id }.toSet()
+
+        assertEquals(setOf("new"), ids(LibraryFilter.NotStarted))
+        assertEquals(setOf("cur"), ids(LibraryFilter.Listening))
+        assertEquals(setOf("done", "mark"), ids(LibraryFilter.Finished))
+        assertEquals(
+            ids(LibraryFilter.All),
+            ids(LibraryFilter.NotStarted) + ids(LibraryFilter.Listening) + ids(LibraryFilter.Finished),
+        )
+    }
+
     @Test
     fun shelfQuery_filtersBySeriesAndSearch() {
         val b1 = makeBook("1", "Dune", "Frank Herbert", series = "Dune", seriesOrder = 1f)

@@ -346,7 +346,7 @@ fun Long.hoursMinutesSeconds(): Triple<Long, Long, Long> {
 
 
 
-enum class LibraryFilter { All, Listening, Finished, Unavailable }
+enum class LibraryFilter { All, Listening, NotStarted, Finished, Unavailable }
 
 /**
  * Скільки файлів книги не відкривається — і скільки їх усього.

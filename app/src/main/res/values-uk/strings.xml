@@ -13,6 +13,7 @@
     <string name="clear_search_text">Очистити пошук</string>
     <string name="filter_all">Усі</string>
     <string name="filter_listening">Слухаю</string>
+    <string name="filter_not_started">Не почато</string>
     <string name="filter_finished">Завершені</string>
     <string name="filter_unavailable">Файли зникли</string>
     <string name="sort_last_played">Останні</string>
@@ -180,6 +181,7 @@
     <string name="nothing_found_title">Нічого не знайдено</string>
     <string name="nothing_found_query">Немає книг за запитом «%s»</string>
     <string name="nothing_found_listening">Немає книг, які зараз слухаєте</string>
+    <string name="nothing_found_not_started">Немає книг, які ви ще не починали</string>
     <string name="nothing_found_finished">Немає завершених книг</string>
     <string name="import_scanning">Читаємо папку…</string>
     <string name="import_progress">Імпорт… %1$d / %2$d</string>
