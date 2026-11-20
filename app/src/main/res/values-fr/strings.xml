@@ -55,6 +55,7 @@
     <string name="add_bookmark">Ajouter un signet</string>
     <string name="bookmark_note_label">Note (facultatif)</string>
     <string name="bookmark_saved">Signet enregistré</string>
+    <string name="play_after_call">Appel en cours. Le livre démarrera à la fin de l\'appel</string>
     <string name="book_progress">Livre : %d%%</string>
     <string name="book_progress_chapter">Chapitre %1$d sur %2$d · Livre %3$d %%</string>
     <string name="book_time_left">Il reste %1$s à %2$s</string>

@@ -55,6 +55,7 @@
     <string name="add_bookmark">Додати закладку</string>
     <string name="bookmark_note_label">Замітка (необов\'язково)</string>
     <string name="bookmark_saved">Закладку збережено</string>
+    <string name="play_after_call">Іде дзвінок. Книга почне грати, щойно він закінчиться</string>
     <string name="book_progress">Книга: %d%%</string>
     <string name="book_progress_chapter">Розділ %1$d з %2$d · Книга %3$d%%</string>
     <string name="book_time_left">Залишилось %1$s при %2$s</string>

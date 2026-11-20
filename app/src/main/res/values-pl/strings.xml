@@ -55,6 +55,7 @@
     <string name="add_bookmark">Dodaj zakładkę</string>
     <string name="bookmark_note_label">Notatka (opcjonalnie)</string>
     <string name="bookmark_saved">Zakładka zapisana</string>
+    <string name="play_after_call">Trwa rozmowa. Książka zacznie grać po jej zakończeniu</string>
     <string name="book_progress">Książka: %d%%</string>
     <string name="book_progress_chapter">Rozdział %1$d z %2$d · Książka %3$d%%</string>
     <string name="book_time_left">Zostało %1$s przy %2$s</string>

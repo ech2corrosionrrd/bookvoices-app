@@ -110,6 +110,29 @@ class PlaybackService : MediaLibraryService() {
     @Volatile
     private var pausedAtWallMs = 0L
 
+    /** «Грати» натиснули під час дзвінка — запуск чекає кінця розмови. Див. [CallAudio]. */
+    private var playAfterCallJob: kotlinx.coroutines.Job? = null
+
+    private val audioManager by lazy {
+        getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
+    }
+
+    /**
+     * Відкладає «Грати» до кінця дзвінка: раз на секунду дивиться режим звуку, а коли
+     * розмова скінчилася — запускає через [sessionPlayer], тобто тим самим шляхом
+     * (із розумним відкатом). Повторне «Грати» під час очікування нічого не додає,
+     * «Пауза» — скасовує.
+     */
+    private fun playAfterCall() {
+        if (playAfterCallJob?.isActive == true) return
+        android.widget.Toast.makeText(this, str(R.string.play_after_call), android.widget.Toast.LENGTH_SHORT).show()
+        playAfterCallJob = scope.launch {
+            while (CallAudio.isInCall(audioManager.mode)) kotlinx.coroutines.delay(1_000L)
+            playAfterCallJob = null
+            sessionPlayer?.play()
+        }
+    }
+
     /**
      * Коли відтворення обірвав розрив звуку (elapsedRealtime) — для [ReconnectResume].
      * Скидається, щойно відтворення знову йде, хоч би хто його ввімкнув.
@@ -970,6 +993,12 @@ class PlaybackService : MediaLibraryService() {
          * книгу не можна відкочувати за часом паузи іншої.
          */
         override fun handleSetPlayWhenReady(playWhenReady: Boolean): ListenableFuture<*> {
+            if (playWhenReady && CallAudio.isInCall(audioManager.mode)) {
+                playAfterCall()
+                return com.google.common.util.concurrent.Futures.immediateVoidFuture()
+            }
+            playAfterCallJob?.cancel()
+            playAfterCallJob = null
             if (playWhenReady && !player.playWhenReady && smartRewindEnabled &&
                 player.mediaItemCount > 0 &&
                 player.playbackState != androidx.media3.common.Player.STATE_ENDED

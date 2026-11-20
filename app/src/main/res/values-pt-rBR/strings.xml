@@ -55,6 +55,7 @@
     <string name="add_bookmark">Adicionar marcador</string>
     <string name="bookmark_note_label">Nota (opcional)</string>
     <string name="bookmark_saved">Marcador salvo</string>
+    <string name="play_after_call">Chamada em andamento. O livro começa quando ela terminar</string>
     <string name="book_progress">Livro: %d%%</string>
     <string name="book_progress_chapter">Capítulo %1$d de %2$d · Livro %3$d%%</string>
     <string name="book_time_left">Faltam %1$s a %2$s</string>

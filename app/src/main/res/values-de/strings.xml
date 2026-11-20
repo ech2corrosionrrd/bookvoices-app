@@ -55,6 +55,7 @@
     <string name="add_bookmark">Lesezeichen hinzufügen</string>
     <string name="bookmark_note_label">Notiz (optional)</string>
     <string name="bookmark_saved">Lesezeichen gespeichert</string>
+    <string name="play_after_call">Ein Anruf läuft. Das Buch startet, sobald er endet</string>
     <string name="book_progress">Buch: %d%%</string>
     <string name="book_progress_chapter">Kapitel %1$d von %2$d · Buch %3$d %%</string>
     <string name="book_time_left">Noch %1$s bei %2$s</string>
