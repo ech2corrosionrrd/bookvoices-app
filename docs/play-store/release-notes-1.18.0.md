@@ -1,7 +1,6 @@
 # Примітки до випуску 1.18.0
 
-**Підготовлено 13 листопада 2026, код доповнено 17–18 листопада 2026** (виправлення без нових функцій — у CHANGELOG). Тег, AAB і надсилання — не раніше **19 листопада 2026**
-(7 днів 11700 у production без нових збоїв, див. ROADMAP), лише за командою власника.
+**Підготовлено 13 листопада 2026, код доповнено 17–20 листопада 2026.** Тег `v1.18.0` — 20 листопада 2026. AAB, APK і mapping (11800) — `rel/release-1.18.0/` (зібрано 20 листопада 2026 з `-PreleaseTag=v1.18.0`).
 
 versionName `1.18.0`, versionCode **11800**. Схема Room (**12**) і формат копії (**v4**) не змінилися.
 У production зараз 11700 (1.17.0), тож примітки — «зміни з 1.17.0».
@@ -20,7 +19,7 @@ versionName `1.18.0`, versionCode **11800**. Схема Room (**12**) і фор�
 
 ## Поле «Примітки до випуску» в Play Console ← використовувати
 
-Довжини: en-US 420, uk 432, pl-PL 447, de-DE 444, es-ES 474, fr-FR 483, pt-BR 429 (ліміт 500).
+Довжини: en-US 420, uk 432, pl-PL 447, de-DE 443, es-ES 474, fr-FR 483, pt-BR 429 (ліміт 500).
 
 ```
 <en-US>
@@ -33,7 +32,7 @@ New: a daily automatic backup to a folder you choose (keeps the last 7). Rename 
 Nowość: codzienna automatyczna kopia zapasowa do wybranego folderu (ostatnie 7). Zmiana nazw rozdziałów i „Ponumeruj”; nowe nazwy synchronizują się przez WebDAV. W historii: seria dni słuchania, cel dzienny i eksport do CSV. Pro: powtarzanie fragmentu A–B w odtwarzaczu. „Zgłoś problem” w ustawieniach przygotowuje e-mail z dziennikiem diagnostycznym — nic nie jest wysyłane samo. Kopię można zapisać do pliku. Zaktualizowana polityka prywatności.
 </pl-PL>
 <de-DE>
-Neu: tägliche automatische Sicherung in einen Ordner deiner Wahl (die letzten 7). Kapitel umbenennen oder „Nummerieren“; neue Namen werden per WebDAV synchronisiert. Im Verlauf: Hörserie, Tagesziel und CSV-Export. Pro: A–B-Wiederholung im Player. „Problem melden“ in den Einstellungen bereitet eine E-Mail mit Diagnoseprotokoll vor – nichts wird automatisch gesendet. Sicherung direkt in eine Datei speichern. Datenschutzerklärung aktualisiert.
+Neu: tägliche automatische Sicherung in einen Ordner Ihrer Wahl (die letzten 7). Kapitel umbenennen oder „Nummerieren“; neue Namen werden per WebDAV synchronisiert. Im Verlauf: Hörserie, Tagesziel und CSV-Export. Pro: A–B-Wiederholung im Player. „Problem melden“ in den Einstellungen bereitet eine E-Mail mit Diagnoseprotokoll vor – nichts wird automatisch gesendet. Sicherung direkt in eine Datei speichern. Datenschutzerklärung aktualisiert.
 </de-DE>
 <es-ES>
 Novedades: copia de seguridad diaria automática en la carpeta que elijas (guarda las 7 últimas). Cambia el nombre de los capítulos o «Numerar»; los nombres se sincronizan por WebDAV. En el historial: racha de días de escucha, meta diaria y exportación a CSV. Pro: repetición A–B en el reproductor. «Informar de un problema» en Ajustes prepara un correo con el registro de diagnóstico; no se envía nada solo. Guarda la copia en un archivo. Política de privacidad actualizada.

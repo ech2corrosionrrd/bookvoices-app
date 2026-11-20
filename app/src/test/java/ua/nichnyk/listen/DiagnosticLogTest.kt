@@ -29,6 +29,23 @@ class DiagnosticLogTest {
     }
 
     @Test
+    fun redactKeepsGoingPastParenthesesInsideBookFolder() {
+        // «Дюна (2021)/01 Арракіс.mp3»: дужка в назві теки обривала шлях, і назва
+        // файла йшла в лист (знайдено 20 листопада 2026).
+        val fnf = "java.io.FileNotFoundException: /storage/emulated/0/Audiobooks/Дюна (2021)/01 Арракіс.mp3: " +
+            "open failed: ENOENT (No such file or directory)"
+        assertEquals(
+            "java.io.FileNotFoundException: <path>: open failed: ENOENT (No such file or directory)",
+            DiagnosticLog.redact(fnf),
+        )
+        val spaced = "FileNotFoundException: /sdcard/Книги/Кобзар (1840) аудіо/02.mp3: open failed"
+        assertEquals("FileNotFoundException: <path>: open failed", DiagnosticLog.redact(spaced))
+        val encoded = "Source error (content://com.android.externalstorage.documents/document/" +
+            "primary%3AКниги%2FГобіт (частина 1)%2F02 Загадки.mp3)"
+        assertEquals("Source error (<path>)", DiagnosticLog.redact(encoded))
+    }
+
+    @Test
     fun redactRemovesBareSafDocumentId() {
         // ExternalStorageProvider пише id документа без content:// — назва книги лишалась.
         val line = "IllegalArgumentException: Failed to determine if " +

@@ -180,10 +180,10 @@ Nowość: codzienna automatyczna kopia zapasowa do wybranego folderu (ostatnie 7
 
 ## de-DE
 
-**Short:** Hörbuch-Player für deine eigenen Dateien: M4B, MP3, Lesezeichen, Sleeptimer.
+**Short:** Hörbuch-Player für Ihre eigenen Dateien: M4B, MP3, Lesezeichen, Sleeptimer.
 
 ```text
-BookVoices ist ein Hörbuch-Player für deine eigene Sammlung. Füge einen Ordner mit mp3-, m4b-, ogg- oder flac-Dateien hinzu und höre genau dort weiter, wo du aufgehört hast. Kein Konto, keine Werbung, kein Abo; deine Dateien bleiben auf deinem Handy.
+BookVoices ist ein Hörbuch-Player für Ihre eigene Sammlung. Fügen Sie einen Ordner mit mp3-, m4b-, ogg- oder flac-Dateien hinzu und hören Sie genau dort weiter, wo Sie aufgehört haben. Kein Konto, keine Werbung, kein Abo; Ihre Dateien bleiben auf Ihrem Handy.
 
 HÖREN
 • mp3, m4b, ogg, flac und opus; Kapitel aus m4b, ID3 und CUE sowie verschachtelte CD1/CD2-Ordner
@@ -203,13 +203,13 @@ BIBLIOTHEK
 • Import eines Ordners, einzelner Dateien oder eines ZIP-Archivs (direkt aus dem Dateimanager öffnen); eigenes Cover
 • Erkennt „Autor - Titel“ aus Ordnernamen, mit Autorenansicht
 • Schnelle Suche nach mehreren Wörtern, unabhängig von Groß-/Kleinschreibung, diakritischen Zeichen und Apostrophen
-• Übernimmt neue Bücher automatisch aus Ordnern deiner Wahl
+• Übernimmt neue Bücher automatisch aus Ordnern Ihrer Wahl
 • Markiert Bücher, deren Dateien verschwunden sind
 
 STATISTIK UND DATEN
 • Hörverlauf mit Wochen-, Monats- und Jahresdiagrammen
-• Sicherung des Fortschritts als JSON oder auf deinem eigenen WebDAV-Server; Synchronisierung zwischen Handy und Tablet ohne doppelte Bücher
-• Tägliche automatische Sicherung in einen Ordner deiner Wahl (die letzten 7)
+• Sicherung des Fortschritts als JSON oder auf Ihrem eigenen WebDAV-Server; Synchronisierung zwischen Handy und Tablet ohne doppelte Bücher
+• Tägliche automatische Sicherung in einen Ordner Ihrer Wahl (die letzten 7)
 • Hörserie, Tagesziel und Export des Verlaufs als CSV
 • Export von Katalog, Lesezeichen und einer Buchzusammenfassung als Markdown
 
@@ -218,17 +218,17 @@ KOMFORT
 • Für große Schrift und Tablets geeignete Layouts
 • 7 Sprachen: English, Українська, Polski, Deutsch, Español, Français, Português (Brasil)
 
-Datenschutz. Keine Analyse, keine Tracker, keine Anmeldung. Die App funktioniert offline; das Netzwerk wird nur genutzt, wenn du die WebDAV-Sicherung selbst einschaltest.
+Datenschutz. Keine Analyse, keine Tracker, keine Anmeldung. Die App funktioniert offline; das Netzwerk wird nur genutzt, wenn Sie die WebDAV-Sicherung selbst einschalten.
 
 BookVoices Pro ist ein einmaliger Kauf, kein Abo: Überspringen von Stille und Pausen, Hardware-Lautstärkeverstärkung (+6 dB), Sprach-Equalizer mit Tonhöhenkorrektur, automatisches Lesezeichen beim Trennen der Kopfhörer, Figurenlisten pro Buch und A–B-Wiederholung. Alles andere ist kostenlos und ohne Werbung.
 
-BookVoices verkauft oder streamt keine Bücher: Es spielt die, die du bereits besitzt.
+BookVoices verkauft oder streamt keine Bücher: Es spielt die, die Sie bereits besitzen.
 ```
 
 **Neuigkeiten (1.18.0):**
 
 ```text
-Neu: tägliche automatische Sicherung in einen Ordner deiner Wahl (die letzten 7). Kapitel umbenennen oder „Nummerieren“; neue Namen werden per WebDAV synchronisiert. Im Verlauf: Hörserie, Tagesziel und CSV-Export. Pro: A–B-Wiederholung im Player. „Problem melden“ in den Einstellungen bereitet eine E-Mail mit Diagnoseprotokoll vor – nichts wird automatisch gesendet. Sicherung direkt in eine Datei speichern. Datenschutzerklärung aktualisiert.
+Neu: tägliche automatische Sicherung in einen Ordner Ihrer Wahl (die letzten 7). Kapitel umbenennen oder „Nummerieren“; neue Namen werden per WebDAV synchronisiert. Im Verlauf: Hörserie, Tagesziel und CSV-Export. Pro: A–B-Wiederholung im Player. „Problem melden“ in den Einstellungen bereitet eine E-Mail mit Diagnoseprotokoll vor – nichts wird automatisch gesendet. Sicherung direkt in eine Datei speichern. Datenschutzerklärung aktualisiert.
 ```
 
 ---

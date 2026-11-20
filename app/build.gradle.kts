@@ -110,7 +110,15 @@ android {
     testOptions {
         unitTests.isIncludeAndroidResources = true
         // Robolectric читає маніфест і ресурси зі справжньої збірки.
-        unitTests.all { it.systemProperty("robolectric.logging.enabled", "false") }
+        unitTests.all {
+            it.systemProperty("robolectric.logging.enabled", "false")
+            // FormalAddressTest читає тексти магазину поза модулем. Без цих входів Gradle
+            // вважає тести актуальними після правки опису й не переганяє їх.
+            it.inputs.dir(rootProject.file("fastlane/metadata"))
+                .withPropertyName("storeTexts").withPathSensitivity(PathSensitivity.RELATIVE)
+            it.inputs.files(rootProject.fileTree("docs/play-store") { include("listing-*-all-languages.md") })
+                .withPropertyName("storeListings").withPathSensitivity(PathSensitivity.RELATIVE)
+        }
     }
 }
 

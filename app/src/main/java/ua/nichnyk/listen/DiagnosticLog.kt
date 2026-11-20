@@ -27,8 +27,10 @@ object DiagnosticLog {
     const val MAX_LINES = 1500
 
     // Назви книг містять пробіли, тож `\S+` лишив би хвіст назви. Шлях триває до
-    // роздільника повідомлення (`: `), закритої дужки або кінця рядка.
-    private const val PATH_TAIL = """[^\n]*?(?=: |\)|[ \t]*$)"""
+    // роздільника повідомлення (`: `), закритої дужки або кінця рядка. Дужка кінчає
+    // шлях, лише якщо далі до `:` чи кінця рядка вже немає `/` або `%2F`: інакше це
+    // дужка в назві теки («Дюна (2021)/01.mp3»), і назва файла лишалася б у звіті.
+    private const val PATH_TAIL = """[^\n]*?(?=: |\)(?![^:\n]*(?:/|%2[Ff]))|[ \t]*$)"""
     private val pathPatterns = listOf(
         Regex("""(content|file)://$PATH_TAIL""", RegexOption.MULTILINE),
         Regex("""(/storage|/sdcard|/mnt|/data/user|/data/data)/$PATH_TAIL""", RegexOption.MULTILINE),
