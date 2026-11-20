@@ -120,12 +120,15 @@ class PlaybackService : MediaLibraryService() {
     /**
      * Відкладає «Грати» до кінця дзвінка: раз на секунду дивиться режим звуку, а коли
      * розмова скінчилася — запускає через [sessionPlayer], тобто тим самим шляхом
-     * (із розумним відкатом). Повторне «Грати» під час очікування нічого не додає,
-     * «Пауза» — скасовує.
+     * (із розумним відкатом).
+     *
+     * Друге «Грати» під час очікування вмикає книгу одразу (див. [handleSetPlayWhenReady]):
+     * дехто з VoIP-застосунків і Bluetooth-гарнітур лишає режим `IN_COMMUNICATION` після
+     * розмови, і без цього виходу книга не грала б зовсім. Кнопка на екрані весь цей час
+     * показує «Грати», тож скасувати очікування паузою не вийде — лише цим натисканням.
      */
     private fun playAfterCall() {
-        if (playAfterCallJob?.isActive == true) return
-        android.widget.Toast.makeText(this, str(R.string.play_after_call), android.widget.Toast.LENGTH_SHORT).show()
+        android.widget.Toast.makeText(this, str(R.string.play_after_call), android.widget.Toast.LENGTH_LONG).show()
         playAfterCallJob = scope.launch {
             while (CallAudio.isInCall(audioManager.mode)) kotlinx.coroutines.delay(1_000L)
             playAfterCallJob = null
@@ -993,7 +996,8 @@ class PlaybackService : MediaLibraryService() {
          * книгу не можна відкочувати за часом паузи іншої.
          */
         override fun handleSetPlayWhenReady(playWhenReady: Boolean): ListenableFuture<*> {
-            if (playWhenReady && CallAudio.isInCall(audioManager.mode)) {
+            // Перше «Грати» під час дзвінка чекає кінця розмови; друге — грає одразу.
+            if (playWhenReady && playAfterCallJob?.isActive != true && CallAudio.isInCall(audioManager.mode)) {
                 playAfterCall()
                 return com.google.common.util.concurrent.Futures.immediateVoidFuture()
             }

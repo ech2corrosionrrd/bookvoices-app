@@ -64,6 +64,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
+import ua.nichnyk.listen.data.BookWithChapters
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -365,6 +371,12 @@ fun PlayerScreen(
                         onDismiss = vm::dismissJumpBack,
                         modifier = Modifier.align(Alignment.CenterHorizontally),
                     )
+                    NextInSeriesCard(
+                        next = state.nextInSeries,
+                        onPlay = vm::playNextInSeries,
+                        onDismiss = vm::dismissNextInSeries,
+                        modifier = Modifier.align(Alignment.CenterHorizontally),
+                    )
                     AbLoopChip(
                         loop = activeChapterLoop,
                         onToggle = vm::toggleAbLoop,
@@ -378,6 +390,9 @@ fun PlayerScreen(
                         abLoop = activeChapterLoop,
                         onSeek = vm::seek,
                         timeStyle = metrics.timeStyle,
+                        wholeBook = settings.seekWholeBook,
+                        onWholeBookChange = vm::setSeekWholeBook,
+                        onSeekBook = vm::seekBook,
                         modifier = Modifier.fillMaxWidth(),
                     )
 
@@ -458,6 +473,12 @@ fun PlayerScreen(
                         onDismiss = vm::dismissJumpBack,
                         modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = Spacing.s),
                     )
+                    NextInSeriesCard(
+                        next = state.nextInSeries,
+                        onPlay = vm::playNextInSeries,
+                        onDismiss = vm::dismissNextInSeries,
+                        modifier = Modifier.align(Alignment.CenterHorizontally),
+                    )
                     AbLoopChip(
                         loop = activeChapterLoop,
                         onToggle = vm::toggleAbLoop,
@@ -472,6 +493,9 @@ fun PlayerScreen(
                         abLoop = activeChapterLoop,
                         onSeek = vm::seek,
                         timeStyle = metrics.timeStyle,
+                        wholeBook = settings.seekWholeBook,
+                        onWholeBookChange = vm::setSeekWholeBook,
+                        onSeekBook = vm::seekBook,
                         modifier = Modifier.fillMaxWidth(),
                     )
 
@@ -1331,6 +1355,54 @@ private fun AbLoopChip(
     }
 }
 
+/**
+ * «Далі в циклі»: книгу дослухано, черга порожня, а в циклі є наступна недослухана
+ * ([ua.nichnyk.listen.playback.SeriesNext]). Назва — повністю, без обрізання (BookTitleDisplayTest).
+ */
+@Composable
+private fun NextInSeriesCard(
+    next: BookWithChapters?,
+    onPlay: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    AnimatedVisibility(visible = next != null, modifier = modifier) {
+        Surface(
+            shape = CardShape,
+            color = MaterialTheme.colorScheme.secondaryContainer,
+            modifier = Modifier.padding(top = Spacing.s),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(start = Spacing.m, end = Spacing.xxs, top = Spacing.xs, bottom = Spacing.xs),
+            ) {
+                Column(Modifier.weight(1f, fill = false)) {
+                    Text(
+                        stringResource(R.string.next_in_series_title),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    )
+                    Text(
+                        next?.book?.title.orEmpty(),
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    )
+                }
+                Spacer(Modifier.width(Spacing.s))
+                TextButton(onClick = onPlay) { Text(stringResource(R.string.next_in_series_play)) }
+                IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
+                    Icon(
+                        Icons.Outlined.Close,
+                        contentDescription = stringResource(R.string.cancel),
+                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
 /** Пропозиція повернутися туди, звідки щойно перемотали. */
 @Composable
 private fun JumpBackChip(
@@ -1511,6 +1583,10 @@ private fun ChapterProgress(
     onSeek: (Long) -> Unit,
     timeStyle: TextStyle,
     abLoop: AbLoopState? = null,
+    /** Шкала — уся книга, а не розділ. Діє, лише якщо шкала книги надійна (`bookDurationMs > 0`). */
+    wholeBook: Boolean = false,
+    onWholeBookChange: (Boolean) -> Unit = {},
+    onSeekBook: (Long) -> Unit = {},
     // Ширину задає той, хто викликає, і задає явно: доти обидві копії були голим
     // `Column {}` і тримали повну ширину лише тому, що так їх міряв батько.
     // Типовим значенням тут якийсь час стояв `Modifier.fillMaxWidth()` — це
@@ -1520,20 +1596,36 @@ private fun ChapterProgress(
 ) {
     var dragging by remember { mutableStateOf(false) }
     var dragValue by remember { mutableFloatStateOf(0f) }
+    var goToTime by remember { mutableStateOf(false) }
 
     val now = tick.value
-    val sliderMax = now.durationMs.coerceAtLeast(1L).toFloat()
-    val shownMs = if (dragging) dragValue.toLong() else now.positionMs
+    // Шкала книги можлива лише з кількох розділів із відомими тривалостями; інакше
+    // перемикача не видно, а повзунок лишається на розділі, хоч би що стояло в налаштуваннях.
+    val bookScaleAvailable = now.bookDurationMs > 0L
+    val book = wholeBook && bookScaleAvailable
+    val positionMs = if (book) now.bookPositionMs else now.positionMs
+    val durationMs = if (book) now.bookDurationMs else now.durationMs
+    val seek: (Long) -> Unit = if (book) onSeekBook else onSeek
+    val sliderMax = durationMs.coerceAtLeast(1L).toFloat()
+    val shownMs = if (dragging) dragValue.toLong() else positionMs
+    if (goToTime) {
+        GoToTimeDialog(
+            currentMs = positionMs,
+            maxMs = durationMs,
+            onGo = { seek(it); goToTime = false },
+            onDismiss = { goToTime = false },
+        )
+    }
     Column(modifier) {
         Box {
         Slider(
-            value = if (dragging) dragValue else now.positionMs.toFloat().coerceIn(0f, sliderMax),
+            value = if (dragging) dragValue else positionMs.toFloat().coerceIn(0f, sliderMax),
             onValueChange = {
                 dragging = true
                 dragValue = it
             },
             onValueChangeFinished = {
-                onSeek(dragValue.toLong())
+                seek(dragValue.toLong())
                 dragging = false
             },
             valueRange = 0f..sliderMax,
@@ -1542,8 +1634,9 @@ private fun ChapterProgress(
                 activeTrackColor = MaterialTheme.colorScheme.primary,
             ),
         )
-        // Крапки закладок і межі повтору A–B під смужкою розділу.
-        if ((markersMs.isNotEmpty() || abLoop != null) && now.durationMs > 0L) {
+        // Крапки закладок і межі повтору A–B під смужкою розділу (на шкалі книги — ні:
+        // вони прив'язані до розділу, а дрібні крапки на 40 годинах нічого б не сказали).
+        if (!book && (markersMs.isNotEmpty() || abLoop != null) && now.durationMs > 0L) {
             val dotColor = MaterialTheme.colorScheme.tertiary
             val loopColor = MaterialTheme.colorScheme.primary
             Canvas(Modifier.matchParentSize()) {
@@ -1579,19 +1672,91 @@ private fun ChapterProgress(
             }
         }
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            // Торкання пройденого часу — «Перейти до часу» у тій самій шкалі.
             Text(
                 shownMs.formatClock(),
                 style = timeStyle,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .clip(CardShape)
+                    .clickable(onClickLabel = stringResource(R.string.go_to_time_title)) { goToTime = true }
+                    .padding(horizontal = Spacing.xxs),
             )
+            if (bookScaleAvailable) {
+                val scopeLabel = stringResource(if (book) R.string.seek_scope_book else R.string.seek_scope_chapter)
+                val toggleLabel = stringResource(R.string.seek_scope_toggle)
+                TextButton(
+                    onClick = { onWholeBookChange(!wholeBook) },
+                    // TalkBack: «що робить» і «що зараз», а не голе «Розділ».
+                    modifier = Modifier.semantics {
+                        contentDescription = toggleLabel
+                        stateDescription = scopeLabel
+                    },
+                ) {
+                    Text(scopeLabel, style = MaterialTheme.typography.labelMedium)
+                }
+            }
             Text(
-                "-${(now.durationMs - shownMs).coerceAtLeast(0).formatClock()}",
+                "-${(durationMs - shownMs).coerceAtLeast(0).formatClock()}",
                 style = timeStyle,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
+}
+
+/**
+ * «Перейти до часу»: ввести «1:23:45» замість перетягування повзунка в довгому розділі.
+ * Шкала та сама, що й у повзунка (розділ або вся книга). Розбір — [TimeInput.parse].
+ */
+@Composable
+private fun GoToTimeDialog(
+    currentMs: Long,
+    maxMs: Long,
+    onGo: (Long) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var text by remember { mutableStateOf(currentMs.formatClock()) }
+    val parsed = ua.nichnyk.listen.playback.TimeInput.parse(text)
+    val valid = parsed != null && parsed <= maxMs
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.go_to_time_title)) },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    singleLine = true,
+                    isError = text.isNotBlank() && !valid,
+                    placeholder = { Text(stringResource(R.string.go_to_time_hint)) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    supportingText = {
+                        Text(
+                            if (text.isNotBlank() && !valid) {
+                                stringResource(R.string.go_to_time_invalid, maxMs.formatClock())
+                            } else {
+                                stringResource(R.string.go_to_time_range, maxMs.formatClock())
+                            },
+                        )
+                    },
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { parsed?.let(onGo) }, enabled = valid) {
+                Text(stringResource(R.string.go_to_time_go))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+        },
+    )
 }
 
 /** «Прочитано NN%». Теж окремо — рахується з позиції, тобто змінюється на кожен тик. */

@@ -29,7 +29,7 @@ import ua.nichnyk.listen.playback.withoutPosition
 class PlayerViewModel(
     private val player: PlayerManager,
     private val repo: LibraryRepository,
-    prefs: UserPrefs,
+    private val prefs: UserPrefs,
 ) : ViewModel() {
     /**
      * Повний стан, разом із позицією. Тікає 2,5 рази на секунду, тож на верхньому
@@ -88,6 +88,17 @@ class PlayerViewModel(
     fun skipBack() = player.skipBack()
     fun skipForward() = player.skipForward()
     fun seek(ms: Long) = player.seekChapter(ms)
+    fun seekBook(ms: Long) = player.seekBook(ms)
+    fun setSeekWholeBook(enabled: Boolean) {
+        viewModelScope.launch { prefs.setSeekWholeBook(enabled) }
+    }
+    fun dismissNextInSeries() = player.dismissNextInSeries()
+    /** «Далі в циклі» — та сама дорога, що й книга з черги: свіжий запис із бази. */
+    fun playNextInSeries() {
+        val next = player.state.value.nextInSeries ?: return
+        player.dismissNextInSeries()
+        playQueueItem(next)
+    }
     fun jumpChapter(index: Int) = player.jumpToChapter(index)
     fun speed(value: Float) = player.setSpeed(value)
     fun sleep(minutes: Int) = player.startSleep(minutes)

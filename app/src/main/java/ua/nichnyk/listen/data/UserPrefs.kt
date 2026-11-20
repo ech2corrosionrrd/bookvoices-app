@@ -75,6 +75,8 @@ data class UserSettings(
     val paperTheme: Boolean = false,
     val themeMode: AppTheme = AppTheme.NIGHT,
     val fadeOnSleep: Boolean = true,
+    /** Повзунок плеєра показує всю книгу, а не поточний розділ. */
+    val seekWholeBook: Boolean = false,
     val defaultSpeed: Float = 1f,
     val skipSilence: Boolean = false,
     val voicePreset: VoicePreset = VoicePreset.OFF,
@@ -207,6 +209,7 @@ class UserPrefs(context: Context, private val secrets: SecretStore) {
             paperTheme = (theme == AppTheme.PAPER),
             themeMode = theme,
             fadeOnSleep = p[FADE] ?: true,
+            seekWholeBook = p[SEEK_WHOLE_BOOK] ?: false,
             defaultSpeed = p[SPEED] ?: 1f,
             // Замасковані Pro-значення: без ліцензії віддаємо дефолт, а не
             // збережений вибір. Так фіча гасне і в сервісі відтворення, а не лише
@@ -274,6 +277,7 @@ class UserPrefs(context: Context, private val secrets: SecretStore) {
         }
     }
     suspend fun setFadeOnSleep(value: Boolean) { store.edit { it[FADE] = value } }
+    suspend fun setSeekWholeBook(value: Boolean) { store.edit { it[SEEK_WHOLE_BOOK] = value } }
     suspend fun setDefaultSpeed(value: Float) { store.edit { it[SPEED] = value } }
     suspend fun setSkipSilence(value: Boolean) { store.edit { it[SKIP_SILENCE] = value } }
     suspend fun setVoicePreset(preset: VoicePreset) {
@@ -428,6 +432,7 @@ class UserPrefs(context: Context, private val secrets: SecretStore) {
         private val PAPER = booleanPreferencesKey("paper")
         private val THEME_MODE = stringPreferencesKey("theme_mode")
         private val FADE = booleanPreferencesKey("fade")
+        private val SEEK_WHOLE_BOOK = booleanPreferencesKey("seek_whole_book")
         private val SPEED = floatPreferencesKey("speed")
         private val SKIP_SILENCE = booleanPreferencesKey("skip_silence")
         /** Прибраний тумблер; читається лише щоб перенести вибір у VOICE_PRESET. */

@@ -99,6 +99,11 @@ data class PlayerUiState(
     val voicePreset: VoicePreset = VoicePreset.OFF,
     val pitch: Float = 1.0f,
     val abLoop: AbLoopState? = null,
+    /**
+     * Книга дослухана, черга порожня, а в циклі є наступна недослухана — плеєр
+     * пропонує «Далі в циклі». Сама не вмикається: кінець книги — природна пауза.
+     */
+    val nextInSeries: BookWithChapters? = null,
 ) {
     val isSleepEndOfChapter: Boolean
         get() = sleepMode == SleepTimerMode.EndOfChapter
@@ -149,14 +154,23 @@ data class PlaybackTick(
     val positionMs: Long = 0L,
     val durationMs: Long = 0L,
     val bookProgress: Float = 0f,
+    /** Позиція й тривалість усієї книги; 0 — шкала книги ненадійна ([BookTimeline.isUsable]). */
+    val bookPositionMs: Long = 0L,
+    val bookDurationMs: Long = 0L,
 )
 
 /** Тікаюча частина стану — для тих, хто справді малює позицію. */
-fun PlayerUiState.tick(): PlaybackTick = PlaybackTick(
-    positionMs = positionMs,
-    durationMs = durationMs,
-    bookProgress = bookProgress,
-)
+fun PlayerUiState.tick(): PlaybackTick {
+    val d = BookTimeline.durations(book?.chapters.orEmpty(), chapterIndex, durationMs)
+    val usable = BookTimeline.isUsable(d)
+    return PlaybackTick(
+        positionMs = positionMs,
+        durationMs = durationMs,
+        bookProgress = bookProgress,
+        bookPositionMs = if (usable) BookTimeline.position(d, chapterIndex, positionMs) else 0L,
+        bookDurationMs = if (usable) BookTimeline.total(d) else 0L,
+    )
+}
 
 /**
  * Той самий стан, але без позиції: рівні між тиками, тож `distinctUntilChanged`
@@ -334,6 +348,7 @@ class PlayerManager(
                         }
                         val isSleepActive = _state.value.sleepMode != null || sleepJob != null || sleepGraceJob != null
                         val q = _state.value.queue
+                        if (q.isEmpty()) offerNextInSeries(book)
                         if (q.isNotEmpty() && !isSleepActive) {
                             val nextBook = q.first()
                             // Через removeFromQueue, а не _state.update: інакше знята
@@ -741,6 +756,42 @@ class PlayerManager(
 
     fun dismissJumpBack() {
         _state.update { it.copy(jumpBackTarget = null) }
+    }
+
+    /** Після кінця книги: шукає наступну в циклі й пропонує її (див. [PlayerUiState.nextInSeries]). */
+    private suspend fun offerNextInSeries(finished: BookWithChapters) {
+        val all = runCatching { repo.getAllBooks() }.getOrNull() ?: return
+        val next = SeriesNext.find(finished.book, all.map { it.book }) ?: return
+        val full = all.firstOrNull { it.book.id == next.id } ?: return
+        // Поки шукали, могли ввімкнути іншу книгу — тоді пропозиція вже ні до чого.
+        _state.update { if (it.book?.book?.id == finished.book.id) it.copy(nextInSeries = full) else it }
+    }
+
+    fun dismissNextInSeries() {
+        _state.update { it.copy(nextInSeries = null) }
+    }
+
+    /**
+     * Перемотування в межах усієї книги (повзунок «уся книга», «Перейти до часу»).
+     * Той самий розділ — звичайний [seekChapter]; інший — як [jumpToChapter], але
+     * одразу на потрібну позицію.
+     */
+    fun seekBook(bookPositionMs: Long) {
+        val s = _state.value
+        val book = s.book ?: return
+        val d = BookTimeline.durations(book.chapters, s.chapterIndex, s.durationMs)
+        if (!BookTimeline.isUsable(d)) return
+        val (idx, pos) = BookTimeline.locate(d, bookPositionMs)
+        if (idx == s.chapterIndex) {
+            seekChapter(pos)
+            return
+        }
+        if (s.abLoop != null) _state.update { it.copy(abLoop = null) }
+        recordJumpBack(s.chapterIndex, s.positionMs)
+        markUserSeek()
+        withLiveController { c ->
+            if (idx in 0 until c.mediaItemCount) c.seekTo(idx, pos.coerceAtLeast(0L))
+        }
     }
 
     fun seekChapter(positionMs: Long) {
@@ -1487,6 +1538,7 @@ class PlayerManager(
                     voicePreset = settings.voicePreset,
                     monoAudio = settings.monoAudio,
                     abLoop = null,
+                    nextInSeries = null,
                 )
             }
             if (autoPlay) c.play() else c.pause()
@@ -1621,6 +1673,8 @@ class PlayerManager(
     private fun publish(player: Player) {
         if (player.isPlaying) {
             playbackStarted = true
+            // Дослухану книгу ввімкнули знову — пропозиція «Далі в циклі» вже не до місця.
+            if (_state.value.nextInSeries != null) _state.update { it.copy(nextInSeries = null) }
             // Відтворення повернули кнопкою, а не струшуванням — пільгове вікно
             // більше не потрібне, інакше випадковий рух за хвилину завів би таймер сну.
             if (sleepGraceJob != null) {

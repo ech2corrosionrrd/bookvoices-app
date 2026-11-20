@@ -71,6 +71,8 @@ class LibraryRepository(
 
     suspend fun getBook(id: String): BookWithChapters? = dao.getBook(id)
 
+    suspend fun getAllBooks(): List<BookWithChapters> = dao.getAllBooks()
+
     suspend fun getBookForChapter(chapterId: String): BookWithChapters? = dao.getBookForChapter(chapterId)
 
     fun observeBookmarks(): Flow<List<BookmarkWithBook>> =
